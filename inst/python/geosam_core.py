@@ -23,8 +23,12 @@ from PIL import Image
 import torch
 
 # Global model references (for keeping model warm)
+# Sam3Model for text prompts (PCS - Promptable Category Segmentation)
 _MODEL = None
 _PROCESSOR = None
+# Sam3TrackerModel for point/box prompts (PVS - Promptable Visual Segmentation)
+_TRACKER_MODEL = None
+_TRACKER_PROCESSOR = None
 _DEVICE = None
 
 
@@ -64,12 +68,44 @@ def load_model(device: Optional[str] = None) -> bool:
     return True
 
 
+def load_tracker_model(device: Optional[str] = None) -> bool:
+    """
+    Load SAM3 Tracker model for point/box prompts.
+
+    The tracker model supports PVS (Promptable Visual Segmentation) with
+    point and box prompts, unlike Sam3Model which only supports text prompts.
+
+    Args:
+        device: Computing device ("mps", "cuda", "cpu", or None for auto)
+
+    Returns:
+        True if successful
+    """
+    global _TRACKER_MODEL, _TRACKER_PROCESSOR, _DEVICE
+
+    if _TRACKER_MODEL is not None:
+        return True
+
+    from transformers import Sam3TrackerProcessor, Sam3TrackerModel
+
+    _DEVICE = device or get_device()
+    print(f"Loading SAM3 Tracker model on {_DEVICE}...")
+
+    _TRACKER_MODEL = Sam3TrackerModel.from_pretrained("facebook/sam3").to(_DEVICE)
+    _TRACKER_PROCESSOR = Sam3TrackerProcessor.from_pretrained("facebook/sam3")
+
+    print("SAM3 Tracker model loaded and ready!")
+    return True
+
+
 def unload_model() -> bool:
-    """Unload model to free memory."""
-    global _MODEL, _PROCESSOR, _DEVICE
+    """Unload all models to free memory."""
+    global _MODEL, _PROCESSOR, _TRACKER_MODEL, _TRACKER_PROCESSOR, _DEVICE
 
     _MODEL = None
     _PROCESSOR = None
+    _TRACKER_MODEL = None
+    _TRACKER_PROCESSOR = None
     _DEVICE = None
 
     import gc
@@ -82,8 +118,13 @@ def unload_model() -> bool:
 
 
 def is_model_loaded() -> bool:
-    """Check if model is currently loaded."""
+    """Check if text model is currently loaded."""
     return _MODEL is not None
+
+
+def is_tracker_loaded() -> bool:
+    """Check if tracker model (for point/box prompts) is currently loaded."""
+    return _TRACKER_MODEL is not None
 
 
 def detect_text(
@@ -147,7 +188,7 @@ def detect_boxes(
     threshold: float = 0.5
 ) -> Dict[str, Any]:
     """
-    Detect objects within bounding boxes using SAM3.
+    Detect objects within bounding boxes using SAM3 Tracker model.
 
     Args:
         img_array: RGB image as numpy array (height, width, 3)
@@ -157,41 +198,54 @@ def detect_boxes(
     Returns:
         Dict with 'masks' (list of 2D numpy arrays) and 'scores' (list of floats)
     """
-    global _MODEL, _PROCESSOR, _DEVICE
+    global _TRACKER_MODEL, _TRACKER_PROCESSOR, _DEVICE
 
-    if _MODEL is None:
-        load_model()
+    if _TRACKER_MODEL is None:
+        load_tracker_model()
 
     height, width = img_array.shape[:2]
     pil_image = Image.fromarray(img_array.astype(np.uint8))
 
-    print(f"Running SAM3 with {len(pixel_boxes)} box prompt(s)")
+    print(f"Running SAM3 Tracker with {len(pixel_boxes)} box prompt(s)")
 
-    # Run inference with box prompts
-    inputs = _PROCESSOR(
+    # Run inference with box prompts using tracker model
+    inputs = _TRACKER_PROCESSOR(
         images=pil_image,
         input_boxes=[pixel_boxes],
         return_tensors="pt"
     ).to(_DEVICE)
 
     with torch.no_grad():
-        outputs = _MODEL(**inputs)
+        outputs = _TRACKER_MODEL(**inputs)
 
-    results = _PROCESSOR.post_process_instance_segmentation(
-        outputs,
-        threshold=threshold,
-        mask_threshold=0.5,
-        target_sizes=[[height, width]]
-    )[0]
+    # Post-process masks
+    masks = _TRACKER_PROCESSOR.post_process_masks(
+        outputs.pred_masks,
+        inputs["original_sizes"],
+        inputs["reshaped_input_sizes"]
+    )
 
-    masks = results["masks"]
-    scores = results["scores"]
+    # masks shape: (batch, num_boxes, num_masks_per_box, H, W)
+    # We typically want the best mask per box (index 0 usually has highest IoU)
+    mask_list = []
+    score_list = []
 
-    print(f"SAM3 found {len(masks)} objects")
+    if len(masks) > 0:
+        batch_masks = masks[0]  # First (only) batch
+        batch_scores = outputs.iou_scores[0]  # IoU scores
 
-    # Convert to numpy arrays for R
-    mask_list = [mask.cpu().numpy().astype(np.uint8) for mask in masks]
-    score_list = [float(s.cpu()) if hasattr(s, 'cpu') else float(s) for s in scores]
+        for box_idx in range(batch_masks.shape[0]):
+            # Get best mask for this box (highest IoU score)
+            box_scores = batch_scores[box_idx].cpu().numpy()
+            best_mask_idx = np.argmax(box_scores)
+            best_score = float(box_scores[best_mask_idx])
+
+            if best_score >= threshold:
+                mask = batch_masks[box_idx, best_mask_idx].cpu().numpy().astype(np.uint8)
+                mask_list.append(mask)
+                score_list.append(best_score)
+
+    print(f"SAM3 Tracker found {len(mask_list)} objects")
 
     return {
         "masks": mask_list,
@@ -207,7 +261,7 @@ def detect_points(
     threshold: float = 0.5
 ) -> Dict[str, Any]:
     """
-    Detect objects at point locations using SAM3.
+    Detect objects at point locations using SAM3 Tracker model.
 
     Args:
         img_array: RGB image as numpy array (height, width, 3)
@@ -218,42 +272,84 @@ def detect_points(
     Returns:
         Dict with 'masks' (list of 2D numpy arrays) and 'scores' (list of floats)
     """
-    global _MODEL, _PROCESSOR, _DEVICE
+    global _TRACKER_MODEL, _TRACKER_PROCESSOR, _DEVICE
 
-    if _MODEL is None:
-        load_model()
+    if _TRACKER_MODEL is None:
+        load_tracker_model()
 
     height, width = img_array.shape[:2]
     pil_image = Image.fromarray(img_array.astype(np.uint8))
 
-    print(f"Running SAM3 with {len(pixel_points)} point prompt(s)")
+    print(f"Running SAM3 Tracker with {len(pixel_points)} point prompt(s)")
 
-    # Run inference with point prompts
-    inputs = _PROCESSOR(
+    # Run inference with point prompts using tracker model
+    # Sam3Tracker expects 4 levels: [batch, object, points, coordinates]
+    # Each point is a separate object (to segment multiple objects)
+    # Format: [[[p1], [p2], [p3]]] = 3 objects, each with 1 point
+    points_per_object = [[[p] for p in pixel_points]]
+    labels_per_object = [[[l] for l in labels]]
+
+    inputs = _TRACKER_PROCESSOR(
         images=pil_image,
-        input_points=[pixel_points],
-        input_labels=[labels],
+        input_points=points_per_object,
+        input_labels=labels_per_object,
         return_tensors="pt"
     ).to(_DEVICE)
 
     with torch.no_grad():
-        outputs = _MODEL(**inputs)
+        outputs = _TRACKER_MODEL(**inputs)
 
-    results = _PROCESSOR.post_process_instance_segmentation(
-        outputs,
-        threshold=threshold,
-        mask_threshold=0.5,
-        target_sizes=[[height, width]]
-    )[0]
+    # Get masks and scores from outputs
+    # pred_masks shape: (batch, num_objects, num_masks_per_object, H, W)
+    # iou_scores shape: (batch, num_objects, num_masks_per_object)
+    pred_masks = outputs.pred_masks
+    iou_scores = outputs.iou_scores
 
-    masks = results["masks"]
-    scores = results["scores"]
+    mask_list = []
+    score_list = []
 
-    print(f"SAM3 found {len(masks)} objects")
+    # Process each object's masks
+    batch_masks = pred_masks[0]  # First (only) batch
+    batch_scores = iou_scores[0]
 
-    # Convert to numpy arrays for R
-    mask_list = [mask.cpu().numpy().astype(np.uint8) for mask in masks]
-    score_list = [float(s.cpu()) if hasattr(s, 'cpu') else float(s) for s in scores]
+    print(f"Mask shape: {batch_masks.shape}, Score shape: {batch_scores.shape}")
+
+    # Handle different output shapes
+    if batch_masks.dim() == 4:
+        # (num_objects, num_masks, H, W)
+        for obj_idx in range(batch_masks.shape[0]):
+            obj_scores = batch_scores[obj_idx].cpu().numpy()
+            best_idx = np.argmax(obj_scores)
+            best_score = float(obj_scores[best_idx])
+
+            if best_score >= threshold:
+                # Get mask
+                mask = batch_masks[obj_idx, best_idx].cpu().numpy()
+                # Threshold the mask (it's logits)
+                mask = (mask > 0).astype(np.uint8)
+                # Resize to original image dimensions
+                mask_pil = Image.fromarray(mask * 255)
+                mask_pil = mask_pil.resize((width, height), Image.NEAREST)
+                mask = (np.array(mask_pil) > 127).astype(np.uint8)
+                mask_list.append(mask)
+                score_list.append(best_score)
+    elif batch_masks.dim() == 3:
+        # (num_masks, H, W)
+        all_scores = batch_scores.cpu().numpy().flatten()
+        best_idx = np.argmax(all_scores)
+        best_score = float(all_scores[best_idx])
+
+        if best_score >= threshold:
+            mask = batch_masks[best_idx].cpu().numpy()
+            mask = (mask > 0).astype(np.uint8)
+            # Resize to original image dimensions
+            mask_pil = Image.fromarray(mask * 255)
+            mask_pil = mask_pil.resize((width, height), Image.NEAREST)
+            mask = (np.array(mask_pil) > 127).astype(np.uint8)
+            mask_list.append(mask)
+            score_list.append(best_score)
+
+    print(f"SAM3 Tracker found {len(mask_list)} objects")
 
     return {
         "masks": mask_list,
@@ -274,12 +370,20 @@ def check_environment() -> Dict[str, Any]:
         "mps_available": torch.backends.mps.is_available(),
         "cuda_available": torch.cuda.is_available(),
         "transformers_available": False,
-        "model_loaded": is_model_loaded()
+        "tracker_available": False,
+        "model_loaded": is_model_loaded(),
+        "tracker_loaded": is_tracker_loaded()
     }
 
     try:
         from transformers import Sam3Processor, Sam3Model
         info["transformers_available"] = True
+    except ImportError:
+        pass
+
+    try:
+        from transformers import Sam3TrackerProcessor, Sam3TrackerModel
+        info["tracker_available"] = True
     except ImportError:
         pass
 

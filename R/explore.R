@@ -58,14 +58,16 @@ sam_explore <- function(
     zoom <- max(1, min(18, round(8 - log2(width_deg))))
   }
 
-  # Run gadget
-  shiny::runGadget(
+  # Run gadget and return result
+  result <- shiny::runGadget(
     app = shiny::shinyApp(
       ui = .explore_ui(source),
       server = .explore_server(source, center, zoom)
     ),
     viewer = shiny::dialogViewer("geosam", width = 1200, height = 800)
   )
+
+  result
 }
 
 
@@ -315,7 +317,7 @@ sam_explore <- function(
       shiny::radioButtons(
         "prompt_type",
         label = NULL,
-        choices = c("Text Prompt" = "text", "Draw Example" = "exemplar"),
+        choices = c("Text Prompt" = "text", "Draw Example" = "exemplar", "Click Points" = "points"),
         selected = "text",
         inline = TRUE
       ),
@@ -504,21 +506,23 @@ sam_explore <- function(
       if (input$prompt_type == "points") {
         click <- input$map_click
         if (!is.null(click)) {
-          label <- if (input$point_mode == "positive") 1L else 0L
+          # Default to positive if not yet initialized
+          mode <- input$point_mode %||% "positive"
+          label <- if (mode == "positive") 1L else 0L
           rv$points <- c(rv$points, list(list(
             lng = click$lng,
             lat = click$lat,
             label = label
           )))
 
-          # Add marker
-          color <- if (label == 1L) "#22c55e" else "#ef4444"
+          # Add marker - green for positive, red for negative
+          marker_color <- if (label == 1L) "#16a34a" else "#ef4444"
           mapgl::mapboxgl_proxy("map") |>
             mapgl::add_markers(
               data = sf::st_sf(
                 geometry = sf::st_sfc(sf::st_point(c(click$lng, click$lat)), crs = 4326)
               ),
-              marker_options = list(color = color)
+              color = marker_color
             )
         }
       }
@@ -691,9 +695,9 @@ sam_explore <- function(
       shiny::stopApp(rv$geosam)
     })
 
-    # Handle window close
+    # Handle window close - also return result (don't lose work)
     session$onSessionEnded(function() {
-      shiny::stopApp(NULL)
+      shiny::stopApp(rv$geosam)
     })
   }
 }
