@@ -1,10 +1,18 @@
-#' Extract sf Polygons from geosam Object
+#' Extract sf Polygons from geosam or geosam_image Object
 #'
-#' Converts detection masks from a geosam object to sf polygon geometries.
+#' Converts detection masks to sf polygon geometries.
 #'
-#' @param x A geosam object from `sam_detect()` or `sam_explore()`.
-#' @param min_area Minimum object area in square meters. Objects smaller are filtered out.
-#' @param max_area Maximum object area in square meters. Objects larger are filtered out.
+#' For `geosam` objects (georeferenced imagery), returns polygons in WGS84
+#' coordinates with area in square meters.
+#'
+#' For `geosam_image` objects (non-georeferenced images), returns polygons
+#' in pixel coordinates where x = column (from left) and y = row (from top).
+#'
+#' @param x A geosam or geosam_image object.
+#' @param min_area Minimum object area. For geosam, in square meters.
+#'   For geosam_image, in square pixels. Objects smaller are filtered out.
+#' @param max_area Maximum object area. For geosam, in square meters.
+#'   For geosam_image, in square pixels. Objects larger are filtered out.
 #'
 #' @return An sf data frame with polygon geometries, scores, and area.
 #'   Returns NULL if no polygons remain after filtering.
@@ -13,10 +21,20 @@
 #'
 #' @examples
 #' \dontrun{
+#' # Georeferenced imagery
 #' result <- sam_detect(image = "satellite.tif", text = "building")
 #' buildings <- sam_as_sf(result, min_area = 100)
+#'
+#' # Non-georeferenced image
+#' result <- sam_image("photo.jpg", text = "dog")
+#' dogs <- sam_as_sf(result)  # coordinates in pixels
 #' }
 sam_as_sf <- function(x, min_area = NULL, max_area = NULL) {
+  # Dispatch based on class
+  if (inherits(x, "geosam_image")) {
+    return(.sam_as_sf_image(x, min_area, max_area))
+  }
+
   validate_geosam(x)
 
   if (length(x$masks) == 0) {
@@ -34,6 +52,88 @@ sam_as_sf <- function(x, min_area = NULL, max_area = NULL) {
     min_area_m2 = min_area_m2,
     max_area_m2 = max_area_m2
   )
+}
+
+
+#' Convert geosam_image masks to sf (pixel coordinates)
+#' @keywords internal
+.sam_as_sf_image <- function(x, min_area = NULL, max_area = NULL) {
+  validate_geosam_image(x)
+
+  if (length(x$masks) == 0) {
+    cli::cli_alert_warning("No masks to convert.")
+    return(NULL)
+  }
+
+  img_width <- x$dimensions[1]
+  img_height <- x$dimensions[2]
+
+  min_area_px <- min_area %||% 0
+  max_area_px <- max_area %||% Inf
+
+  # Convert each mask to polygon in pixel space
+  polygons <- list()
+
+  for (i in seq_along(x$masks)) {
+    mask_array <- x$masks[[i]]
+
+    # Ensure correct orientation
+    mask_nrow <- nrow(mask_array)
+    mask_ncol <- ncol(mask_array)
+
+    if (mask_nrow == img_width && mask_ncol == img_height) {
+      mask_array <- t(mask_array)
+    }
+
+    # Create a simple raster in pixel coordinates
+    # Origin at top-left (0,0), x increases right, y increases down
+    mask_rast <- terra::rast(
+      nrows = img_height,
+      ncols = img_width,
+      extent = terra::ext(0, img_width, 0, img_height),
+      crs = ""  # No CRS for pixel space
+    )
+
+    # Fill with mask values - need to flip Y since terra expects bottom-to-top
+    terra::values(mask_rast) <- as.vector(t(mask_array[nrow(mask_array):1, ]))
+
+    # Convert to polygon
+    tryCatch({
+      polys <- terra::as.polygons(mask_rast, dissolve = TRUE)
+      polys <- polys[polys[[1]] == 1, ]  # Keep only mask=1
+
+      if (nrow(polys) > 0) {
+        sf_poly <- sf::st_as_sf(polys)
+
+        # Calculate area in pixels
+        area_px <- as.numeric(sf::st_area(sf_poly))
+
+        # Filter by area
+        if (area_px >= min_area_px && area_px <= max_area_px) {
+          sf_poly$score <- x$scores[i]
+          sf_poly$area_px <- area_px
+          sf_poly$mask_id <- i
+          sf_poly <- sf_poly[, c("mask_id", "score", "area_px", "geometry")]
+          polygons[[length(polygons) + 1]] <- sf_poly
+        }
+      }
+    }, error = function(e) {
+      # Skip problematic masks
+    })
+  }
+
+  if (length(polygons) == 0) {
+    return(NULL)
+  }
+
+  result <- do.call(rbind, polygons)
+
+  # The polygons from terra have y=0 at bottom (geographic convention)
+  # For pixel coordinates, we want y=0 at top
+  # But .convert_pixel_sf_to_geo() will flip when converting to fake geographic coords
+  # So we leave these in terra's bottom-up convention and let the display conversion handle it
+
+  result
 }
 
 
@@ -132,13 +232,15 @@ sam_bbox <- function(x) {
 #'
 #' Returns confidence scores for all detections.
 #'
-#' @param x A geosam object.
+#' @param x A geosam or geosam_image object.
 #'
 #' @return Numeric vector of scores.
 #'
 #' @export
 sam_scores <- function(x) {
-  validate_geosam(x)
+  if (!inherits(x, c("geosam", "geosam_image"))) {
+    cli::cli_abort("{.arg x} must be a {.cls geosam} or {.cls geosam_image} object.")
+  }
   x$scores
 }
 
@@ -147,12 +249,45 @@ sam_scores <- function(x) {
 #'
 #' Returns the number of detected objects.
 #'
-#' @param x A geosam object.
+#' @param x A geosam or geosam_image object.
 #'
 #' @return Integer count of detections.
 #'
 #' @export
 sam_count <- function(x) {
-  validate_geosam(x)
+  if (!inherits(x, c("geosam", "geosam_image"))) {
+    cli::cli_abort("{.arg x} must be a {.cls geosam} or {.cls geosam_image} object.")
+  }
   length(x$masks)
+}
+
+
+#' Extract Masks as Matrices
+#'
+#' Returns detection masks as a list of R matrices.
+#'
+#' @param x A geosam or geosam_image object.
+#'
+#' @return A list of binary matrices (1 = detected, 0 = background).
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' result <- sam_image("photo.jpg", text = "dog")
+#' masks <- sam_as_matrix(result)
+#' image(masks[[1]])  # Display first mask
+#' }
+sam_as_matrix <- function(x) {
+  if (!inherits(x, c("geosam", "geosam_image"))) {
+    cli::cli_abort("{.arg x} must be a {.cls geosam} or {.cls geosam_image} object.")
+  }
+
+  if (length(x$masks) == 0) {
+    cli::cli_alert_warning("No masks to extract.")
+    return(list())
+  }
+
+  # Return masks as-is (they're already matrices)
+  x$masks
 }

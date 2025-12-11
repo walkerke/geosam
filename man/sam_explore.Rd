@@ -12,7 +12,12 @@ sam_explore(
 )
 }
 \arguments{
-\item{source}{Imagery source: "mapbox", "esri", or "maptiler".}
+\item{source}{Imagery source: "mapbox", "esri", or "maptiler".
+\itemize{
+\item "mapbox": Requires \code{MAPBOX_PUBLIC_TOKEN} environment variable
+\item "esri": Free Esri World Imagery (no API key required)
+\item "maptiler": Requires \code{MAPTILER_API_KEY} environment variable
+}}
 
 \item{center}{Initial map center as c(lng, lat). If NULL, defaults to US center.}
 

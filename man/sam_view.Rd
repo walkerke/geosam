@@ -2,29 +2,28 @@
 % Please edit documentation in R/view.R
 \name{sam_view}
 \alias{sam_view}
-\title{Interactive Refinement Viewer}
+\title{Interactive Viewer for SAM Detections}
 \usage{
-sam_view(x)
+sam_view(x, source = c("mapbox", "esri", "maptiler"))
 }
 \arguments{
 \item{x}{A geosam object from \code{sam_detect()}.}
+
+\item{source}{Imagery source for basemap: "mapbox", "esri", or "maptiler".
+Defaults to "mapbox" but falls back to "esri" if MAPBOX_PUBLIC_TOKEN
+is not set. Esri is free and requires no API key.}
 }
 \value{
-A refined geosam object when the user clicks "Done".
+The geosam object when the user clicks "Done".
 }
 \description{
-Opens an interactive map viewer to refine SAM detections using positive and
-negative point clicks.
+Opens an interactive map viewer to view SAM detections.
 }
 \details{
 The viewer shows the satellite imagery with current detections overlaid.
-Users can:
-\itemize{
-\item Toggle between "Add point (+)" and "Remove point (-)" modes
-\item Click on the map to add refinement points
-\item Click "Re-run" to apply refinements
-\item Click "Done" to return the refined result
-}
+
+Note: Point-based refinement is not yet fully implemented. The current
+version is view-only.
 }
 \examples{
 \dontrun{

@@ -7,7 +7,7 @@
 get_imagery(
   bbox,
   output = NULL,
-  source = c("mapbox", "esri", "google"),
+  source = c("mapbox", "esri", "maptiler", "google"),
   zoom = 17,
   api_key = NULL
 )
@@ -18,13 +18,20 @@ get_imagery(
 
 \item{output}{Path for output GeoTIFF. If NULL, creates a temp file.}
 
-\item{source}{Imagery source: "mapbox", "esri", or "google".}
+\item{source}{Imagery source: "mapbox", "esri", "maptiler", or "google".
+\itemize{
+\item "mapbox": Requires \code{MAPBOX_PUBLIC_TOKEN} environment variable
+\item "esri": Free Esri World Imagery (no API key required)
+\item "maptiler": Requires \code{MAPTILER_API_KEY} environment variable
+\item "google": Google satellite tiles (no API key required)
+}}
 
 \item{zoom}{Tile zoom level (15-19). Higher values = more detail.
 Recommended: 17-18 for objects like buildings, well pads.}
 
 \item{api_key}{API key for the imagery source. For Mapbox, uses
-MAPBOX_PUBLIC_TOKEN environment variable by default.}
+MAPBOX_PUBLIC_TOKEN environment variable by default. For MapTiler, uses
+MAPTILER_API_KEY environment variable by default.}
 }
 \value{
 Path to the downloaded GeoTIFF file.

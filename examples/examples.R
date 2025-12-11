@@ -30,6 +30,12 @@ explore_result <- sam_explore(
   zoom = 16
 )
 
+explore_result <- sam_explore(
+  source = "maptiler",
+  center = c(-97.365, 32.705),
+  zoom = 16
+)
+
 # 5. Interactive refinement of existing result
 sam_view(result)
 
@@ -61,3 +67,25 @@ sam_scores(result)
 # 9. Select specific detections
 top3 <- sam_select(result, 1:3)
 sam_as_sf(top3)
+
+
+sam_image("~/Downloads/mavs.jpeg", "basketball")
+
+library(reticulate)
+
+img <- magick::image_read("~/Downloads/mavs.jpeg")
+arr <- geosam:::.read_image_array_magick(img)
+
+# Pass to Python and save
+py_run_string(
+  "
+  from PIL import Image
+  import numpy as np
+
+  def save_test_image(arr, path):
+    img = Image.fromarray(arr.astype(np.uint8))
+    img.save(path)
+  "
+)
+
+py$save_test_image(arr, "/tmp/test_sam_input.png")

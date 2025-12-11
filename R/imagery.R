@@ -91,7 +91,13 @@ get_imagery <- function(
   # Ensure output directory exists
   dir.create(dirname(output), showWarnings = FALSE, recursive = TRUE)
 
-  cli::cli_alert_info("Downloading {source} imagery at zoom {zoom}...")
+  # Show ToS notice (once per session per provider)
+  .notify_tos(source)
+
+  # Get display name for provider
+ source_name <- .source_display_name(source)
+
+  cli::cli_alert_info("Downloading {source_name} imagery at zoom {zoom}...")
 
   # Download tiles using R-native implementation
   .download_tiles(
@@ -303,4 +309,52 @@ geosam_clear_cache <- function() {
   }
 
   invisible(TRUE)
+}
+
+
+#' Get display name for imagery source
+#' @keywords internal
+.source_display_name <- function(source) {
+  switch(source,
+    mapbox = "Mapbox",
+    esri = "Esri",
+    maptiler = "MapTiler",
+    google = "Google",
+    source
+ )
+}
+
+
+#' Notify user of Terms of Service (once per session per provider)
+#' @keywords internal
+.notify_tos <- function(source) {
+  # Check if already shown this session
+  if (source %in% .geosam_env$tos_shown) {
+    return(invisible())
+  }
+
+  # Mark as shown
+  .geosam_env$tos_shown <- c(.geosam_env$tos_shown, source)
+
+  # Provider-specific ToS messages (using cli for proper formatting)
+  switch(source,
+    mapbox = cli::cli_inform(c(
+      "i" = "Mapbox imagery is governed by the Mapbox Terms of Service.",
+      " " = "See: {.url https://www.mapbox.com/legal/tos/}"
+    )),
+    esri = cli::cli_inform(c(
+      "i" = "Esri World Imagery is governed by the Esri Master License Agreement.",
+      " " = "See: {.url https://www.esri.com/en-us/legal/terms/full-master-agreement}"
+    )),
+    maptiler = cli::cli_inform(c(
+      "i" = "MapTiler imagery is governed by the MapTiler Terms of Service.",
+      " " = "See: {.url https://www.maptiler.com/terms/}"
+    )),
+    google = cli::cli_inform(c(
+      "i" = "Google imagery is governed by the Google Maps Platform Terms of Service.",
+      " " = "See: {.url https://cloud.google.com/maps-platform/terms}"
+    ))
+  )
+
+  invisible()
 }

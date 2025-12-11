@@ -7,7 +7,7 @@
 sam_count(x)
 }
 \arguments{
-\item{x}{A geosam object.}
+\item{x}{A geosam or geosam_image object.}
 }
 \value{
 Integer count of detections.

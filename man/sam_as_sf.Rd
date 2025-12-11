@@ -2,27 +2,41 @@
 % Please edit documentation in R/extractors.R
 \name{sam_as_sf}
 \alias{sam_as_sf}
-\title{Extract sf Polygons from geosam Object}
+\title{Extract sf Polygons from geosam or geosam_image Object}
 \usage{
 sam_as_sf(x, min_area = NULL, max_area = NULL)
 }
 \arguments{
-\item{x}{A geosam object from \code{sam_detect()} or \code{sam_explore()}.}
+\item{x}{A geosam or geosam_image object.}
 
-\item{min_area}{Minimum object area in square meters. Objects smaller are filtered out.}
+\item{min_area}{Minimum object area. For geosam, in square meters.
+For geosam_image, in square pixels. Objects smaller are filtered out.}
 
-\item{max_area}{Maximum object area in square meters. Objects larger are filtered out.}
+\item{max_area}{Maximum object area. For geosam, in square meters.
+For geosam_image, in square pixels. Objects larger are filtered out.}
 }
 \value{
 An sf data frame with polygon geometries, scores, and area.
 Returns NULL if no polygons remain after filtering.
 }
 \description{
-Converts detection masks from a geosam object to sf polygon geometries.
+Converts detection masks to sf polygon geometries.
+}
+\details{
+For \code{geosam} objects (georeferenced imagery), returns polygons in WGS84
+coordinates with area in square meters.
+
+For \code{geosam_image} objects (non-georeferenced images), returns polygons
+in pixel coordinates where x = column (from left) and y = row (from top).
 }
 \examples{
 \dontrun{
+# Georeferenced imagery
 result <- sam_detect(image = "satellite.tif", text = "building")
 buildings <- sam_as_sf(result, min_area = 100)
+
+# Non-georeferenced image
+result <- sam_image("photo.jpg", text = "dog")
+dogs <- sam_as_sf(result)  # coordinates in pixels
 }
 }

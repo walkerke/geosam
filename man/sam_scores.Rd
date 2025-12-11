@@ -7,7 +7,7 @@
 sam_scores(x)
 }
 \arguments{
-\item{x}{A geosam object.}
+\item{x}{A geosam or geosam_image object.}
 }
 \value{
 Numeric vector of scores.

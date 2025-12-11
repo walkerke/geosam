@@ -2,12 +2,14 @@
 .geosam_env <- new.env(parent = emptyenv())
 
 .onLoad <- function(libname, pkgname) {
-  # Initialize package state
+ # Initialize package state
   .geosam_env$model_loaded <- FALSE
   .geosam_env$model_type <- NULL
   .geosam_env$device <- NULL
   .geosam_env$python_module <- NULL
   .geosam_env$worker_dir <- NULL
+  # Track which provider ToS messages have been shown this session
+  .geosam_env$tos_shown <- character(0)
 }
 
 .onAttach <- function(libname, pkgname) {
