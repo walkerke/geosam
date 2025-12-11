@@ -171,13 +171,13 @@ sam_detect <- function(
     )
 
   } else if (!is.null(exemplar)) {
-    # Exemplar-based detection
+    # Exemplar-based detection - uses main SAM3 model to find similar objects
     exemplar_box <- .sf_to_coords(exemplar, "bbox")
-    pixel_boxes <- .geo_boxes_to_pixel(list(exemplar_box), image_path)
+    pixel_box <- .geo_boxes_to_pixel(list(exemplar_box), image_path)[[1]]
 
-    result <- module$detect_boxes(
+    result <- module$detect_exemplar(
       img_array = img_array,
-      pixel_boxes = pixel_boxes,
+      pixel_box = pixel_box,
       threshold = threshold
     )
   }

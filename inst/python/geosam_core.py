@@ -254,6 +254,74 @@ def detect_boxes(
     }
 
 
+def detect_exemplar(
+    img_array: np.ndarray,
+    pixel_box: List[int],
+    threshold: float = 0.5
+) -> Dict[str, Any]:
+    """
+    Find all objects similar to the exemplar using SAM3 model.
+
+    This uses the main Sam3Model (not Tracker) with input_boxes and positive labels
+    to find all instances matching the visual concept within the exemplar box.
+
+    Args:
+        img_array: RGB image as numpy array (height, width, 3)
+        pixel_box: Bounding box of exemplar in PIXEL coordinates [xmin, ymin, xmax, ymax]
+        threshold: Detection confidence threshold (0-1)
+
+    Returns:
+        Dict with 'masks' (list of 2D numpy arrays) and 'scores' (list of floats)
+    """
+    global _MODEL, _PROCESSOR, _DEVICE
+
+    if _MODEL is None:
+        load_model()
+
+    height, width = img_array.shape[:2]
+    pil_image = Image.fromarray(img_array.astype(np.uint8))
+
+    print(f"Running SAM3 exemplar detection with box: {pixel_box}")
+
+    # Use input_boxes with positive label (1) for exemplar-based detection
+    # This tells SAM3 "find all objects similar to what's in this box"
+    input_boxes = [[pixel_box]]  # [batch, num_boxes, 4]
+    input_boxes_labels = [[1]]   # 1 = positive exemplar
+
+    inputs = _PROCESSOR(
+        images=pil_image,
+        input_boxes=input_boxes,
+        input_boxes_labels=input_boxes_labels,
+        return_tensors="pt"
+    ).to(_DEVICE)
+
+    with torch.no_grad():
+        outputs = _MODEL(**inputs)
+
+    # Post-process results
+    results = _PROCESSOR.post_process_instance_segmentation(
+        outputs,
+        threshold=threshold,
+        mask_threshold=0.5,
+        target_sizes=[[height, width]]
+    )[0]
+
+    masks = results["masks"]
+    scores = results["scores"]
+
+    print(f"SAM3 exemplar detection found {len(masks)} objects")
+
+    # Convert to numpy arrays for R
+    mask_list = [mask.cpu().numpy().astype(np.uint8) for mask in masks]
+    score_list = [float(s.cpu()) if hasattr(s, 'cpu') else float(s) for s in scores]
+
+    return {
+        "masks": mask_list,
+        "scores": score_list,
+        "count": len(mask_list)
+    }
+
+
 def detect_points(
     img_array: np.ndarray,
     pixel_points: List[List[int]],
