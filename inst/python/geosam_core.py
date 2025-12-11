@@ -258,7 +258,8 @@ def detect_points(
     img_array: np.ndarray,
     pixel_points: List[List[int]],
     labels: List[int],
-    threshold: float = 0.5
+    threshold: float = 0.5,
+    multi_object: bool = True
 ) -> Dict[str, Any]:
     """
     Detect objects at point locations using SAM3 Tracker model.
@@ -268,6 +269,8 @@ def detect_points(
         pixel_points: List of point coordinates in PIXEL space [[col, row], ...]
         labels: List of labels (1 for foreground, 0 for background)
         threshold: Detection confidence threshold
+        multi_object: If True, each point is a separate object. If False, all points
+            refine a single object (use for refinement with pos/neg points).
 
     Returns:
         Dict with 'masks' (list of 2D numpy arrays) and 'scores' (list of floats)
@@ -282,12 +285,25 @@ def detect_points(
 
     print(f"Running SAM3 Tracker with {len(pixel_points)} point prompt(s)")
 
+    # Ensure labels is a list (reticulate may pass single int)
+    if isinstance(labels, (int, np.integer)):
+        labels = [labels]
+    else:
+        labels = list(labels)
+
     # Run inference with point prompts using tracker model
-    # Sam3Tracker expects 4 levels: [batch, object, points, coordinates]
-    # Each point is a separate object (to segment multiple objects)
-    # Format: [[[p1], [p2], [p3]]] = 3 objects, each with 1 point
-    points_per_object = [[[p] for p in pixel_points]]
-    labels_per_object = [[[l] for l in labels]]
+    # Sam3Tracker input_points: 4 levels [image_batch, object, points_per_object, coordinates]
+    # Sam3Tracker input_labels: 3 levels [image_batch, object, labels_per_point]
+    if multi_object:
+        # Each point is a separate object (to segment multiple objects)
+        # Format: [[[[p1]], [[p2]], [[p3]]]] = 3 objects, each with 1 point
+        points_per_object = [[[p] for p in pixel_points]]
+        labels_per_object = [[[int(l)] for l in labels]]
+    else:
+        # All points belong to ONE object (for refinement with pos/neg points)
+        # Format: [[[p1, p2, p3]]] = 1 object with multiple points
+        points_per_object = [[pixel_points]]
+        labels_per_object = [[[int(l) for l in labels]]]
 
     inputs = _TRACKER_PROCESSOR(
         images=pil_image,
@@ -299,53 +315,40 @@ def detect_points(
     with torch.no_grad():
         outputs = _TRACKER_MODEL(**inputs)
 
-    # Get masks and scores from outputs
-    # pred_masks shape: (batch, num_objects, num_masks_per_object, H, W)
-    # iou_scores shape: (batch, num_objects, num_masks_per_object)
-    pred_masks = outputs.pred_masks
-    iou_scores = outputs.iou_scores
+    # Post-process masks to original size using the processor
+    masks = _TRACKER_PROCESSOR.post_process_masks(
+        outputs.pred_masks.cpu(),
+        inputs["original_sizes"]
+    )[0]  # Get first (only) batch
+
+    iou_scores = outputs.iou_scores[0]  # First batch
+
+    print(f"Mask shape: {masks.shape}, Score shape: {iou_scores.shape}")
+    print(f"multi_object: {multi_object}")
 
     mask_list = []
     score_list = []
 
-    # Process each object's masks
-    batch_masks = pred_masks[0]  # First (only) batch
-    batch_scores = iou_scores[0]
-
-    print(f"Mask shape: {batch_masks.shape}, Score shape: {batch_scores.shape}")
-
-    # Handle different output shapes
-    if batch_masks.dim() == 4:
-        # (num_objects, num_masks, H, W)
-        for obj_idx in range(batch_masks.shape[0]):
-            obj_scores = batch_scores[obj_idx].cpu().numpy()
+    # Handle different output shapes based on multi_object mode
+    if masks.dim() == 4:
+        # (num_objects, num_masks_per_object, H, W)
+        for obj_idx in range(masks.shape[0]):
+            obj_scores = iou_scores[obj_idx].cpu().numpy()
             best_idx = np.argmax(obj_scores)
             best_score = float(obj_scores[best_idx])
 
             if best_score >= threshold:
-                # Get mask
-                mask = batch_masks[obj_idx, best_idx].cpu().numpy()
-                # Threshold the mask (it's logits)
-                mask = (mask > 0).astype(np.uint8)
-                # Resize to original image dimensions
-                mask_pil = Image.fromarray(mask * 255)
-                mask_pil = mask_pil.resize((width, height), Image.NEAREST)
-                mask = (np.array(mask_pil) > 127).astype(np.uint8)
+                mask = masks[obj_idx, best_idx].cpu().numpy().astype(np.uint8)
                 mask_list.append(mask)
                 score_list.append(best_score)
-    elif batch_masks.dim() == 3:
-        # (num_masks, H, W)
-        all_scores = batch_scores.cpu().numpy().flatten()
+    elif masks.dim() == 3:
+        # (num_masks, H, W) - single object
+        all_scores = iou_scores.cpu().numpy().flatten()
         best_idx = np.argmax(all_scores)
         best_score = float(all_scores[best_idx])
 
         if best_score >= threshold:
-            mask = batch_masks[best_idx].cpu().numpy()
-            mask = (mask > 0).astype(np.uint8)
-            # Resize to original image dimensions
-            mask_pil = Image.fromarray(mask * 255)
-            mask_pil = mask_pil.resize((width, height), Image.NEAREST)
-            mask = (np.array(mask_pil) > 127).astype(np.uint8)
+            mask = masks[best_idx].cpu().numpy().astype(np.uint8)
             mask_list.append(mask)
             score_list.append(best_score)
 

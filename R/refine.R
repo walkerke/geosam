@@ -151,16 +151,19 @@ sam_refine <- function(x, points, labels = NULL) {
 
   .ensure_python()
 
-  # Convert points to sf if needed
-  if (inherits(points, c("matrix", "data.frame"))) {
-    if (ncol(points) < 2) {
-      cli::cli_abort("Points must have at least 2 columns (x, y).")
+
+  # Convert points to sf if needed (check sf first since it inherits from data.frame)
+  if (!inherits(points, c("sf", "sfc"))) {
+    if (inherits(points, c("matrix", "data.frame"))) {
+      if (ncol(points) < 2) {
+        cli::cli_abort("Points must have at least 2 columns (x, y).")
+      }
+      points <- sf::st_as_sf(
+        as.data.frame(points[, 1:2]),
+        coords = c(1, 2),
+        crs = 4326
+      )
     }
-    points <- sf::st_as_sf(
-      as.data.frame(points[, 1:2]),
-      coords = c(1, 2),
-      crs = 4326
-    )
   }
 
   # Default labels to positive
@@ -175,13 +178,15 @@ sam_refine <- function(x, points, labels = NULL) {
   # Read image array
   img_array <- .read_image_array(x$image_path)
 
-  # Run point detection
+
+  # Run point detection in refinement mode (all points = one object)
   module <- .get_module()
   result <- module$detect_points(
     img_array = img_array,
     pixel_points = pixel_points,
     labels = as.integer(labels),
-    threshold = 0.5
+    threshold = 0.5,
+    multi_object = FALSE
   )
 
   if (result$count == 0) {

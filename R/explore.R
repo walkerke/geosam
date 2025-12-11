@@ -4,6 +4,9 @@
 #' run SAM detection.
 #'
 #' @param source Imagery source: "mapbox", "esri", or "maptiler".
+#'   - "mapbox": Requires `MAPBOX_PUBLIC_TOKEN` environment variable
+#'   - "esri": Free Esri World Imagery (no API key required)
+#'   - "maptiler": Requires `MAPTILER_API_KEY` environment variable
 #' @param center Initial map center as c(lng, lat). If NULL, defaults to US center.
 #' @param bbox Initial bounding box as c(xmin, ymin, xmax, ymax) or sf object.
 #'   If provided, map will zoom to this extent.
@@ -41,6 +44,9 @@ sam_explore <- function(
   rlang::check_installed(c("shiny", "mapgl"), reason = "for interactive exploration")
   source <- match.arg(source)
 
+ # Check for required API keys and fall back to Esri if missing
+  source <- .resolve_map_source(source)
+
   # Default center to US
  if (is.null(center) && is.null(bbox)) {
     center <- c(-98, 39)
@@ -73,6 +79,14 @@ sam_explore <- function(
 
 #' @keywords internal
 .explore_ui <- function(source) {
+
+  # Choose correct output function based on source
+  map_output <- if (source == "mapbox") {
+    mapgl::mapboxglOutput("map", height = "100%")
+  } else {
+    mapgl::maplibreOutput("map", height = "100%")
+  }
+
   shiny::fillPage(
     shiny::tags$head(
       shiny::tags$style(shiny::HTML("
@@ -288,7 +302,7 @@ sam_explore <- function(
       "))
     ),
 
-    mapgl::mapboxglOutput("map", height = "100%"),
+    map_output,
 
     shiny::div(
       class = "control-panel",
@@ -397,28 +411,65 @@ sam_explore <- function(
       status_type = "normal"
     )
 
-    # Build map style based on source
-    map_style <- switch(source,
-      mapbox = mapgl::mapbox_style("satellite-streets"),
-      esri = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-      maptiler = NULL
-    )
+    # Helper to get correct proxy based on source
+    get_proxy <- function() {
+      if (source == "mapbox") {
+        mapgl::mapboxgl_proxy("map")
+      } else {
+        mapgl::maplibre_proxy("map")
+      }
+    }
 
-    # Render map
-    output$map <- mapgl::renderMapboxgl({
-      mapgl::mapboxgl(
-        style = map_style,
-        center = initial_center,
-        zoom = initial_zoom
-      ) |>
-        mapgl::add_navigation_control(position = "top-left") |>
-        mapgl::add_scale_control(position = "bottom-left", unit = "imperial")
-    })
+    # Build map based on source
+    if (source == "mapbox") {
+      # Mapbox - use mapboxgl
+      output$map <- mapgl::renderMapboxgl({
+        mapgl::mapboxgl(
+          style = mapgl::mapbox_style("satellite-streets"),
+          center = initial_center,
+          zoom = initial_zoom
+        ) |>
+          mapgl::add_navigation_control(position = "top-left") |>
+          mapgl::add_scale_control(position = "bottom-left", unit = "imperial")
+      })
+    } else if (source == "maptiler")
+
+{
+      # MapTiler - use maplibre with maptiler_style
+      output$map <- mapgl::renderMaplibre({
+        mapgl::maplibre(
+          style = mapgl::maptiler_style("hybrid"),
+          center = initial_center,
+          zoom = initial_zoom
+        ) |>
+          mapgl::add_navigation_control(position = "top-left") |>
+          mapgl::add_scale_control(position = "bottom-left", unit = "imperial")
+      })
+    } else {
+      # Esri - use maplibre with raster source
+      output$map <- mapgl::renderMaplibre({
+        mapgl::maplibre(
+          center = initial_center,
+          zoom = initial_zoom
+        ) |>
+          mapgl::add_raster_source(
+            id = "esri-satellite",
+            tiles = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            tileSize = 256
+          ) |>
+          mapgl::add_raster_layer(
+            id = "esri-satellite-layer",
+            source = "esri-satellite"
+          ) |>
+          mapgl::add_navigation_control(position = "top-left") |>
+          mapgl::add_scale_control(position = "bottom-left", unit = "imperial")
+      })
+    }
 
     # Add draw control once map is ready
     shiny::observe({
       shiny::req(input$map_bbox)
-      mapgl::mapboxgl_proxy("map") |>
+      get_proxy() |>
         mapgl::add_draw_control(
           position = "top-left",
           displayControlsDefault = FALSE,
@@ -517,7 +568,7 @@ sam_explore <- function(
 
           # Add marker - green for positive, red for negative
           marker_color <- if (label == 1L) "#16a34a" else "#ef4444"
-          mapgl::mapboxgl_proxy("map") |>
+          get_proxy() |>
             mapgl::add_markers(
               data = sf::st_sf(
                 geometry = sf::st_sfc(sf::st_point(c(click$lng, click$lat)), crs = 4326)
@@ -531,7 +582,7 @@ sam_explore <- function(
     # Clear points
     shiny::observeEvent(input$clear_points, {
       rv$points <- list()
-      mapgl::mapboxgl_proxy("map") |>
+      get_proxy() |>
         mapgl::clear_markers()
       rv$status <- "Points cleared."
       rv$status_type <- "normal"
@@ -540,7 +591,7 @@ sam_explore <- function(
     # Clear drawing
     shiny::observeEvent(input$clear_drawing, {
       rv$drawn_bbox <- NULL
-      mapgl::mapboxgl_proxy("map") |>
+      get_proxy() |>
         mapgl::clear_draw()
       rv$status <- "Box cleared. Draw around an example."
       rv$status_type <- "normal"
@@ -550,7 +601,7 @@ sam_explore <- function(
     shiny::observeEvent(input$clear_results, {
       rv$geosam <- NULL
       tryCatch({
-        mapgl::mapboxgl_proxy("map") |>
+        get_proxy() |>
           mapgl::clear_layer("detections")
       }, error = function(e) NULL)
       rv$status <- "Results cleared."
@@ -616,7 +667,7 @@ sam_explore <- function(
           )
 
         } else if (input$prompt_type == "exemplar") {
-          drawn <- mapgl::get_drawn_features(mapgl::mapboxgl_proxy("map"))
+          drawn <- mapgl::get_drawn_features(get_proxy())
           if (is.null(drawn) || nrow(drawn) == 0) {
             rv$status <- "Draw a rectangle around an example first."
             rv$status_type <- "warning"
@@ -669,11 +720,11 @@ sam_explore <- function(
       result_sf <- sam_as_sf(result)
       if (!is.null(result_sf) && nrow(result_sf) > 0) {
         tryCatch({
-          mapgl::mapboxgl_proxy("map") |>
+          get_proxy() |>
             mapgl::clear_layer("detections")
         }, error = function(e) NULL)
 
-        mapgl::mapboxgl_proxy("map") |>
+        get_proxy() |>
           mapgl::add_fill_layer(
             id = "detections",
             source = result_sf,
@@ -700,4 +751,35 @@ sam_explore <- function(
       shiny::stopApp(rv$geosam)
     })
   }
+}
+
+
+#' Resolve map source with fallback
+#'
+#' Checks if required API keys are available for the requested source.
+#' Falls back to Esri (free, no key required) if keys are missing.
+#'
+#' @param source Requested source: "mapbox", "esri", or "maptiler"
+#' @return Resolved source (may be changed to "esri" if keys missing)
+#' @keywords internal
+.resolve_map_source <- function(source) {
+  if (source == "mapbox") {
+    token <- Sys.getenv("MAPBOX_PUBLIC_TOKEN", unset = "")
+    if (token == "") {
+      cli::cli_alert_warning(
+        "MAPBOX_PUBLIC_TOKEN not set. Falling back to Esri satellite imagery."
+      )
+      return("esri")
+    }
+  } else if (source == "maptiler") {
+    token <- Sys.getenv("MAPTILER_API_KEY", unset = "")
+    if (token == "") {
+      cli::cli_alert_warning(
+        "MAPTILER_API_KEY not set. Falling back to Esri satellite imagery."
+      )
+      return("esri")
+    }
+  }
+  # Esri requires no key
+  source
 }

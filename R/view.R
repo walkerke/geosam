@@ -1,19 +1,19 @@
-#' Interactive Refinement Viewer
+#' Interactive Viewer for SAM Detections
 #'
-#' Opens an interactive map viewer to refine SAM detections using positive and
-#' negative point clicks.
+#' Opens an interactive map viewer to view SAM detections.
 #'
 #' @param x A geosam object from `sam_detect()`.
+#' @param source Imagery source for basemap: "mapbox", "esri", or "maptiler".
+#'   Defaults to "mapbox" but falls back to "esri" if MAPBOX_PUBLIC_TOKEN
+#'   is not set. Esri is free and requires no API key.
 #'
-#' @return A refined geosam object when the user clicks "Done".
+#' @return The geosam object when the user clicks "Done".
 #'
 #' @details
 #' The viewer shows the satellite imagery with current detections overlaid.
-#' Users can:
-#' - Toggle between "Add point (+)" and "Remove point (-)" modes
-#' - Click on the map to add refinement points
-#' - Click "Re-run" to apply refinements
-#' - Click "Done" to return the refined result
+#'
+#' Note: Point-based refinement is not yet fully implemented. The current
+#' version is view-only.
 #'
 #' @export
 #'
@@ -22,15 +22,19 @@
 #' result <- sam_detect(image = "satellite.tif", text = "building")
 #' refined <- sam_view(result)
 #' }
-sam_view <- function(x) {
+sam_view <- function(x, source = c("mapbox", "esri", "maptiler")) {
   validate_geosam(x)
   rlang::check_installed(c("shiny", "mapgl"), reason = "for interactive refinement")
+  source <- match.arg(source)
+
+  # Check for required API keys and fall back to Esri if missing
+  source <- .resolve_map_source(source)
 
   # Run the gadget and return result
   shiny::runGadget(
     app = shiny::shinyApp(
-      ui = .view_ui(x),
-      server = .view_server(x)
+      ui = .view_ui(x, source),
+      server = .view_server(x, source)
     ),
     viewer = shiny::dialogViewer("geosam - Refine", width = 1000, height = 700)
   )
@@ -38,7 +42,14 @@ sam_view <- function(x) {
 
 
 #' @keywords internal
-.view_ui <- function(x) {
+.view_ui <- function(x, source) {
+  # Choose correct output function based on source
+  map_output <- if (source == "mapbox") {
+    mapgl::mapboxglOutput("map", height = "100%")
+  } else {
+    mapgl::maplibreOutput("map", height = "100%")
+  }
+
   shiny::fillPage(
     shiny::tags$head(
       shiny::tags$style(shiny::HTML("
@@ -154,43 +165,43 @@ sam_view <- function(x) {
         .divider { height: 1px; background: #eee; margin: 12px 0; }
 
         /* Radio button styling */
+        .control-panel .shiny-input-radiogroup {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px;
+          margin-bottom: 8px;
+        }
+
         .control-panel .radio-inline {
-          font-size: 12px;
-          padding: 6px 12px;
-          margin-right: 4px;
+          font-size: 11px;
+          padding: 6px 10px;
+          margin: 0;
           border: 1px solid #ddd;
           border-radius: 4px;
           cursor: pointer;
-          display: inline-block;
+          white-space: nowrap;
         }
 
         .control-panel .radio-inline input { display: none; }
         .control-panel .radio-inline:hover { background: #f5f5f5; }
 
-        .control-panel .radio-inline:has(input:checked).positive {
-          background: #16a34a;
+        .control-panel .radio-inline:has(input:checked) {
+          background: #154733;
           color: white;
-          border-color: #16a34a;
-        }
-
-        .control-panel .radio-inline:has(input:checked).negative {
-          background: #dc2626;
-          color: white;
-          border-color: #dc2626;
+          border-color: #154733;
         }
       "))
     ),
 
-    mapgl::mapboxglOutput("map", height = "100%"),
+    map_output,
 
     shiny::div(
       class = "control-panel",
 
-      shiny::h4("Refine Detections"),
-      shiny::div(class = "subtitle", "Add +/- points to improve results"),
+      shiny::h4("View Detections"),
 
       # Current stats
-      shiny::div(class = "section-label", "Current Results"),
+      shiny::div(class = "section-label", "Results"),
       shiny::div(
         class = "info-row",
         shiny::span(class = "info-label", "Detections:"),
@@ -199,200 +210,110 @@ sam_view <- function(x) {
 
       shiny::div(class = "divider"),
 
-      # Point mode
-      shiny::div(class = "section-label", "Click Mode"),
-      shiny::p(class = "help-text", "Green (+) to include areas, red (-) to exclude."),
-      shiny::tags$div(
-        class = "radio-group",
-        shiny::tags$label(
-          class = "radio-inline positive",
-          shiny::tags$input(type = "radio", name = "point_mode", value = "positive", checked = "checked"),
-          "Add (+)"
-        ),
-        shiny::tags$label(
-          class = "radio-inline negative",
-          shiny::tags$input(type = "radio", name = "point_mode", value = "negative"),
-          "Remove (-)"
-        )
-      ),
-
-      shiny::div(
-        style = "margin: 8px 0; font-size: 11px;",
-        "Points: ", shiny::textOutput("n_points", inline = TRUE)
-      ),
-      shiny::actionButton("clear_points", "Clear Points", class = "btn-secondary"),
+      shiny::div(class = "section-label", "Export"),
+      shiny::downloadButton("download_geojson", "Download GeoJSON", class = "btn-secondary"),
 
       shiny::div(class = "divider"),
 
-      shiny::actionButton("rerun", "Re-run Detection", class = "btn-primary"),
-
-      shiny::div(class = "divider"),
-
-      shiny::actionButton("done", "Done", class = "btn-success"),
-
-      shiny::div(class = "status-box", shiny::uiOutput("status_ui"))
+      shiny::actionButton("done", "Done", class = "btn-success")
     )
   )
 }
 
 
 #' @keywords internal
-.view_server <- function(initial_geosam) {
+.view_server <- function(initial_geosam, source) {
   function(input, output, session) {
     # Reactive values
     rv <- shiny::reactiveValues(
-      geosam = initial_geosam,
-      points = list(),
-      status = "Click on the map to add refinement points.",
-      status_type = "normal"
+      geosam = initial_geosam
     )
 
-    # Get image extent for map bounds
-    template <- terra::rast(initial_geosam$image_path)
-    ext <- terra::ext(template)
-    # Convert from Web Mercator to WGS84 for map center
-    center_merc <- c((ext$xmin + ext$xmax) / 2, (ext$ymin + ext$ymax) / 2)
-    center_pt <- sf::st_sfc(sf::st_point(center_merc), crs = 3857)
-    center_wgs <- sf::st_transform(center_pt, 4326)
-    center_coords <- sf::st_coordinates(center_wgs)
-
-    # Initial detections as sf
+    # Initial detections as sf (already WGS84)
+    shiny::showNotification("Converting masks to polygons...", id = "loading", duration = NULL)
     initial_sf <- sam_as_sf(initial_geosam)
+    shiny::removeNotification("loading")
 
-    # Render map
-    output$map <- mapgl::renderMapboxgl({
-      m <- mapgl::mapboxgl(
-        style = mapgl::mapbox_style("satellite-streets"),
-        center = c(center_coords[1, "X"], center_coords[1, "Y"]),
-        zoom = 16
-      ) |>
-        mapgl::add_navigation_control(position = "top-left") |>
-        mapgl::add_scale_control(position = "bottom-left", unit = "imperial")
-
-      # Add detection polygons
-      if (!is.null(initial_sf) && nrow(initial_sf) > 0) {
-        m <- m |>
-          mapgl::add_fill_layer(
-            id = "detections",
-            source = initial_sf,
-            fill_color = "#facc15",
-            fill_opacity = 0.5,
-            fill_outline_color = "#eab308"
+    # Helper to build base map based on source
+    build_base_map <- function() {
+      if (source == "mapbox") {
+        mapgl::mapboxgl(
+          style = mapgl::mapbox_style("satellite-streets"),
+          bounds = initial_sf
+        )
+      } else if (source == "maptiler") {
+        mapgl::maplibre(
+          style = mapgl::maptiler_style("hybrid"),
+          bounds = initial_sf
+        )
+      } else {
+        # Esri - use maplibre with raster source
+        mapgl::maplibre(bounds = initial_sf) |>
+          mapgl::add_raster_source(
+            id = "esri-satellite",
+            tiles = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            tileSize = 256
+          ) |>
+          mapgl::add_raster_layer(
+            id = "esri-satellite-layer",
+            source = "esri-satellite"
           )
       }
+    }
 
-      m
-    })
+    # Render map based on source
+    if (source == "mapbox") {
+      output$map <- mapgl::renderMapboxgl({
+        m <- build_base_map() |>
+          mapgl::add_navigation_control(position = "top-left") |>
+          mapgl::add_scale_control(position = "bottom-left", unit = "imperial")
+
+        if (!is.null(initial_sf) && nrow(initial_sf) > 0) {
+          m <- m |>
+            mapgl::add_fill_layer(
+              id = "detections",
+              source = initial_sf,
+              fill_color = "#facc15",
+              fill_opacity = 0.5,
+              fill_outline_color = "#eab308"
+            )
+        }
+        m
+      })
+    } else {
+      output$map <- mapgl::renderMaplibre({
+        m <- build_base_map() |>
+          mapgl::add_navigation_control(position = "top-left") |>
+          mapgl::add_scale_control(position = "bottom-left", unit = "imperial")
+
+        if (!is.null(initial_sf) && nrow(initial_sf) > 0) {
+          m <- m |>
+            mapgl::add_fill_layer(
+              id = "detections",
+              source = initial_sf,
+              fill_color = "#facc15",
+              fill_opacity = 0.5,
+              fill_outline_color = "#eab308"
+            )
+        }
+        m
+      })
+    }
 
     # Display counts
     output$n_detections <- shiny::renderText({
       length(rv$geosam$masks)
     })
 
-    output$n_points <- shiny::renderText({
-      length(rv$points)
-    })
-
-    # Status display
-    output$status_ui <- shiny::renderUI({
-      cls <- if (rv$status_type == "success") "status-success"
-             else if (rv$status_type == "error") "status-error"
-             else ""
-      shiny::div(class = cls, rv$status)
-    })
-
-    # Handle map clicks - use custom input from radio buttons
-    shiny::observeEvent(input$map_click, {
-      click <- input$map_click
-      if (!is.null(click)) {
-        # Get point mode from the custom radio buttons
-        mode <- input$point_mode %||% "positive"
-        label <- if (mode == "positive") 1L else 0L
-
-        rv$points <- c(rv$points, list(list(
-          lng = click$lng,
-          lat = click$lat,
-          label = label
-        )))
-
-        # Add marker to map
-        color <- if (label == 1L) "#22c55e" else "#ef4444"
-        mapgl::mapboxgl_proxy("map") |>
-          mapgl::add_markers(
-            data = sf::st_sf(
-              geometry = sf::st_sfc(sf::st_point(c(click$lng, click$lat)), crs = 4326)
-            ),
-            marker_options = list(color = color)
-          )
-
-        rv$status <- sprintf("Added %s point. Click 'Re-run' when ready.",
-                            if (label == 1L) "positive" else "negative")
-        rv$status_type <- "normal"
+    # Download GeoJSON
+    output$download_geojson <- shiny::downloadHandler(
+      filename = function() {
+        paste0("geosam_detections_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".geojson")
+      },
+      content = function(file) {
+        sf::st_write(initial_sf, file, driver = "GeoJSON", quiet = TRUE)
       }
-    })
-
-    # Clear points
-    shiny::observeEvent(input$clear_points, {
-      rv$points <- list()
-      mapgl::mapboxgl_proxy("map") |>
-        mapgl::clear_markers()
-      rv$status <- "Points cleared."
-      rv$status_type <- "normal"
-    })
-
-    # Re-run detection with refinement points
-    shiny::observeEvent(input$rerun, {
-      if (length(rv$points) == 0) {
-        rv$status <- "Add some refinement points first."
-        rv$status_type <- "normal"
-        return()
-      }
-
-      rv$status <- "Running detection..."
-      rv$status_type <- "normal"
-
-      # Build points sf
-      coords <- do.call(rbind, lapply(rv$points, function(p) c(p$lng, p$lat)))
-      labels <- sapply(rv$points, function(p) p$label)
-
-      pts_sf <- sf::st_as_sf(
-        data.frame(x = coords[, 1], y = coords[, 2]),
-        coords = c("x", "y"),
-        crs = 4326
-      )
-
-      # Run refinement
-      refined <- tryCatch({
-        sam_refine(rv$geosam, points = pts_sf, labels = labels)
-      }, error = function(e) {
-        rv$status <- paste("Error:", e$message)
-        rv$status_type <- "error"
-        NULL
-      })
-
-      if (!is.null(refined)) {
-        rv$geosam <- refined
-        rv$points <- list()
-
-        # Update map with new detections
-        new_sf <- sam_as_sf(refined)
-        if (!is.null(new_sf) && nrow(new_sf) > 0) {
-          mapgl::mapboxgl_proxy("map") |>
-            mapgl::clear_layer("detections") |>
-            mapgl::clear_markers() |>
-            mapgl::add_fill_layer(
-              id = "detections",
-              source = new_sf,
-              fill_color = "#6366f1",
-              fill_opacity = 0.4,
-              fill_outline_color = "#4338ca"
-            )
-        }
-
-        rv$status <- sprintf("Refined to %d detection(s).", length(refined$masks))
-        rv$status_type <- "success"
-      }
-    })
+    )
 
     # Done - return result
     shiny::observeEvent(input$done, {

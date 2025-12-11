@@ -3,7 +3,7 @@ library(mapgl)
 
 # 1. Basic programmatic detection (well pads in Permian Basin)
 result <- sam_detect(
-  bbox = c(-102.08, 31.95, -102.05, 31.98),
+  bbox = c(-102.63, 31.81, -102.62, 31.83),
   text = "white or tan cleared area",
   source = "mapbox",
   zoom = 17
@@ -20,6 +20,8 @@ filtered <- result |>
   sam_filter(min_area = 500, max_area = 50000)
 sam_count(filtered)
 
+refined <- sam_view(result)
+
 # 4. Interactive exploration (opens Shiny gadget)
 # Start centered on Midland, TX oil fields
 explore_result <- sam_explore(
@@ -29,7 +31,7 @@ explore_result <- sam_explore(
 )
 
 # 5. Interactive refinement of existing result
-refined <- sam_view(result)
+sam_view(result)
 
 # 6. Building detection at TCU
 buildings <- sam_detect(

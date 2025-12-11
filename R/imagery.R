@@ -6,11 +6,16 @@
 #' @param bbox Bounding box for the area. Can be a numeric vector
 #'   `c(xmin, ymin, xmax, ymax)` in WGS84, or an sf/sfc object.
 #' @param output Path for output GeoTIFF. If NULL, creates a temp file.
-#' @param source Imagery source: "mapbox", "esri", or "google".
+#' @param source Imagery source: "mapbox", "esri", "maptiler", or "google".
+#'   - "mapbox": Requires `MAPBOX_PUBLIC_TOKEN` environment variable
+#'   - "esri": Free Esri World Imagery (no API key required)
+#'   - "maptiler": Requires `MAPTILER_API_KEY` environment variable
+#'   - "google": Google satellite tiles (no API key required)
 #' @param zoom Tile zoom level (15-19). Higher values = more detail.
 #'   Recommended: 17-18 for objects like buildings, well pads.
 #' @param api_key API key for the imagery source. For Mapbox, uses
-#'   MAPBOX_PUBLIC_TOKEN environment variable by default.
+#'   MAPBOX_PUBLIC_TOKEN environment variable by default. For MapTiler, uses
+#'   MAPTILER_API_KEY environment variable by default.
 #'
 #' @return Path to the downloaded GeoTIFF file.
 #'
@@ -31,7 +36,7 @@
 get_imagery <- function(
     bbox,
     output = NULL,
-    source = c("mapbox", "esri", "google"),
+    source = c("mapbox", "esri", "maptiler", "google"),
     zoom = 17,
     api_key = NULL
 ) {
@@ -57,6 +62,23 @@ get_imagery <- function(
         "Mapbox API key required.",
         "i" = "Set environment variable: {.code MAPBOX_PUBLIC_TOKEN}",
         "i" = "Or via {.code geosam_configure(mapbox_token = 'pk.xxx')}"
+      ))
+    }
+  }
+
+  # Get API key for MapTiler
+  if (source == "maptiler") {
+    if (is.null(api_key)) {
+      api_key <- Sys.getenv("MAPTILER_API_KEY", unset = NA)
+      if (is.na(api_key) || api_key == "") {
+        api_key <- NULL
+      }
+    }
+    if (is.null(api_key)) {
+      cli::cli_abort(c(
+        "MapTiler API key required.",
+        "i" = "Set environment variable: {.code MAPTILER_API_KEY}",
+        "i" = "Get a free key at: {.url https://www.maptiler.com/}"
       ))
     }
   }
@@ -133,6 +155,10 @@ get_imagery <- function(
     esri = sprintf(
       "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/%d/%d/%d",
       zoom, y, x
+    ),
+    maptiler = sprintf(
+      "https://api.maptiler.com/tiles/satellite-v2/%d/%d/%d.jpg?key=%s",
+      zoom, x, y, api_key
     ),
     google = sprintf(
       "https://mt1.google.com/vt/lyrs=s&x=%d&y=%d&z=%d",
