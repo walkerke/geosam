@@ -21,3 +21,12 @@ Invisibly returns the previous configuration.
 \description{
 Set package-wide configuration options for model selection and device.
 }
+\examples{
+\dontrun{
+# Use SAM 2 on CPU
+geosam_configure(model = "sam2", device = "cpu")
+
+# Set Mapbox token
+geosam_configure(mapbox_token = "pk.xxx")
+}
+}

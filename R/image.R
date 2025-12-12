@@ -21,7 +21,7 @@
 #' @export
 #'
 #' @examples
-#' \dontrun
+#' \dontrun{
 #' # Text-based detection on a photo
 #' result <- sam_image("photo.jpg", text = "dog")
 #'

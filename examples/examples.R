@@ -71,21 +71,6 @@ sam_as_sf(top3)
 
 sam_image("~/Downloads/mavs.jpeg", "basketball")
 
-library(reticulate)
+library(geosam)
 
-img <- magick::image_read("~/Downloads/mavs.jpeg")
-arr <- geosam:::.read_image_array_magick(img)
-
-# Pass to Python and save
-py_run_string(
-  "
-  from PIL import Image
-  import numpy as np
-
-  def save_test_image(arr, path):
-    img = Image.fromarray(arr.astype(np.uint8))
-    img.save(path)
-  "
-)
-
-py$save_test_image(arr, "/tmp/test_sam_input.png")
+sam_explore_image("~/Downloads/mavs.jpeg")

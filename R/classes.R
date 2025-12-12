@@ -216,6 +216,7 @@ is_geosam_image <- function(x) {
 #' @return The validated geosam_image object (invisibly).
 #' @keywords internal
 validate_geosam_image <- function(x) {
+
   if (!inherits(x, "geosam_image")) {
     cli::cli_abort("{.arg x} must be a {.cls geosam_image} object.")
   }
@@ -229,4 +230,379 @@ validate_geosam_image <- function(x) {
   }
 
   invisible(x)
+}
+
+
+# --------------------------------------------------------------------------
+# Plot methods
+# --------------------------------------------------------------------------
+
+#' Plot geosam Detection Results
+#'
+#' Displays satellite imagery with detection polygons overlaid using terra.
+#'
+#' @param x A geosam object from `sam_detect()` or `sam_explore()`.
+#' @param fill Fill color for detection polygons. Default is semi-transparent yellow.
+#'   Ignored if `palette` is specified.
+#' @param border Border color for polygon outlines. If NULL (default), automatically
+#'   darkens the fill color. Set to NA to disable borders.
+#' @param palette Optional color palette for distinct colors per detection. Can be:
+#'
+#'   - A character vector of colors (recycled if needed)
+#'   - A palette name from RColorBrewer (e.g., "Set1", "Dark2", "Paired")
+#'   - A palette function that takes n and returns colors
+#' @param opacity Opacity for fill colors (0-1). Default is 0.5. Applied to all fills.
+#' @param lwd Line width for polygon borders. Default is 1.
+#' @param main Plot title. Default is NULL (no title).
+#' @param add If TRUE, add to existing plot instead of creating new one.
+#'   Default is FALSE.
+#' @param ... Additional arguments passed to `terra::plotRGB()` when `add = FALSE`.
+#'
+#' @return Invisibly returns the sf polygons that were plotted.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' result <- sam_detect(
+#'   bbox = c(-102.63, 31.81, -102.62, 31.83),
+#'   text = "well pad"
+#' )
+#' plot(result)
+#'
+#' # Distinct colors per detection
+#' plot(result, palette = "Set1")
+#'
+#' # Custom colors
+#' plot(result, fill = "red")  # border auto-darkens
+#'
+#' # Layer multiple results
+#' plot(result1)
+#' plot(result2, add = TRUE, fill = "blue")
+#' }
+plot.geosam <- function(x, fill = "#FACC15", border = NULL, palette = NULL,
+                        opacity = 0.5, lwd = 1, main = NULL, add = FALSE, ...) {
+  validate_geosam(x)
+
+  if (length(x$masks) == 0) {
+    cli::cli_alert_warning("No detections to plot.")
+    return(invisible(NULL))
+  }
+
+  # Check image exists
+  if (!file.exists(x$image_path)) {
+    cli::cli_abort("Image file not found: {x$image_path}")
+  }
+
+  # Get detection polygons
+ polys <- sam_as_sf(x)
+
+  if (is.null(polys) || nrow(polys) == 0) {
+    cli::cli_alert_warning("No polygons to plot.")
+    return(invisible(NULL))
+  }
+
+  # Load imagery with terra and plot base if not adding
+  if (!add) {
+    img <- terra::rast(x$image_path)
+    terra::plotRGB(img, main = main, ...)
+  }
+
+  # Transform to image CRS if needed
+  if (!add) {
+    img_crs <- terra::crs(img)
+    if (!is.na(img_crs) && img_crs != "") {
+      polys <- sf::st_transform(polys, img_crs)
+    }
+  }
+
+  # Generate colors
+  n <- nrow(polys)
+  colors <- .get_plot_colors(n, fill, palette, opacity)
+
+  # Generate border colors
+  if (is.null(border)) {
+    # Auto-darken fill colors
+    borders <- .darken_colors(colors)
+  } else if (identical(border, NA)) {
+    borders <- NA
+  } else {
+    borders <- rep_len(border, n)
+  }
+
+  # Plot each polygon
+  for (i in seq_len(n)) {
+    plot(sf::st_geometry(polys[i, ]), add = TRUE,
+         col = colors[i], border = borders[i], lwd = lwd)
+  }
+
+  invisible(polys)
+}
+
+
+#' Plot geosam_image Detection Results
+#'
+#' Displays an image with detection masks overlaid using magick.
+#'
+#' @param x A geosam_image object from `sam_image()` or `sam_explore_image()`.
+#' @param fill Fill color for detection masks. Default is yellow.
+#'   Ignored if `palette` is specified.
+#' @param border Border color for detection outlines. If NULL (default), automatically
+#'   darkens the fill color. Set to NA to disable borders.
+#' @param palette Optional color palette for distinct colors per detection. Can be:
+#'
+#'   - A character vector of colors (recycled if needed)
+#'   - A palette name from RColorBrewer (e.g., "Set1", "Dark2", "Paired")
+#'   - A palette function that takes n and returns colors
+#' @param opacity Opacity of the mask overlay (0-1). Default is 0.4.
+#' @param border_width Width of border lines in pixels. Default is 2.
+#' @param add If TRUE, add to an existing magick image instead of loading from file.
+#'   Pass the image as the `x` parameter's `image_path` will be ignored and `base_img`
+#'   must be provided.
+#' @param base_img A magick image to add overlays to. Required when `add = TRUE`.
+#' @param ... Additional arguments (currently ignored).
+#'
+#' @return Invisibly returns the composite magick image, which can be saved
+#'   with `magick::image_write()` or further manipulated.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' result <- sam_image("photo.jpg", text = "dog")
+#' plot(result)
+#'
+#' # Distinct colors per detection
+#' plot(result, palette = "Set2")
+#'
+#' # Custom color (border auto-matches)
+#' plot(result, fill = "red")
+#'
+#' # Layer multiple detections
+#' img <- plot(result1)
+#' img <- plot(result2, add = TRUE, base_img = img, fill = "blue")
+#' img <- plot(result3, add = TRUE, base_img = img, fill = "red")
+#'
+#' # Save the result
+#' magick::image_write(img, "annotated.png")
+#' }
+plot.geosam_image <- function(x, fill = "#FACC15", border = NULL, palette = NULL,
+                               opacity = 0.4, border_width = 2,
+                               add = FALSE, base_img = NULL, ...) {
+  validate_geosam_image(x)
+
+  # Handle base image
+  if (add) {
+    if (is.null(base_img)) {
+      cli::cli_abort("Must provide {.arg base_img} when {.code add = TRUE}.")
+    }
+    img <- base_img
+  } else {
+    if (!file.exists(x$image_path)) {
+      cli::cli_abort("Image file not found: {x$image_path}")
+    }
+    img <- magick::image_read(x$image_path)
+  }
+
+  img_info <- magick::image_info(img)
+  width <- img_info$width
+  height <- img_info$height
+
+  if (length(x$masks) == 0) {
+    cli::cli_alert_warning("No detections to plot.")
+    if (!add) print(img)
+    return(invisible(img))
+  }
+
+  # Generate colors for each detection
+  n <- length(x$masks)
+  colors <- .get_plot_colors(n, fill, palette, opacity = 1)  # opacity applied separately
+
+  # Generate border colors
+  if (is.null(border)) {
+    borders <- .darken_colors(colors)
+  } else if (identical(border, NA)) {
+    borders <- rep(NA_character_, n)
+  } else {
+    borders <- rep_len(border, n)
+  }
+
+  result <- img
+
+  # Process each mask with its own color
+  for (i in seq_along(x$masks)) {
+    mask <- x$masks[[i]]
+
+    # Handle potential dimension mismatch
+    mask_h <- nrow(mask)
+    mask_w <- ncol(mask)
+
+    if (mask_h == width && mask_w == height) {
+      mask <- t(mask)
+    }
+
+    # Get color components for this mask
+    fill_rgb <- grDevices::col2rgb(colors[i])
+    fill_r <- fill_rgb[1, 1]
+    fill_g <- fill_rgb[2, 1]
+    fill_b <- fill_rgb[3, 1]
+
+    # Build overlay for this mask using vectorized operations
+    mask_indices <- which(mask == 1)
+
+    if (length(mask_indices) > 0) {
+      # Create overlay array
+      overlay_array <- array(as.raw(0), dim = c(4, width, height))
+
+      # Convert linear indices to row, col
+      rows <- ((mask_indices - 1) %% height) + 1
+      cols <- ((mask_indices - 1) %/% height) + 1
+
+      # Fill overlay at mask positions
+      for (j in seq_along(mask_indices)) {
+        overlay_array[1, cols[j], rows[j]] <- as.raw(fill_r)
+        overlay_array[2, cols[j], rows[j]] <- as.raw(fill_g)
+        overlay_array[3, cols[j], rows[j]] <- as.raw(fill_b)
+        overlay_array[4, cols[j], rows[j]] <- as.raw(as.integer(255 * opacity))
+      }
+
+      overlay_img <- magick::image_read(overlay_array)
+      result <- magick::image_composite(result, overlay_img, operator = "over")
+    }
+
+    # Draw border for this mask if requested
+    if (!is.na(borders[i]) && border_width > 0) {
+      # Get polygon for this specific mask
+      single_result <- x
+      single_result$masks <- list(x$masks[[i]])
+      single_result$scores <- x$scores[i]
+
+      polys <- sam_as_sf(single_result)
+
+      if (!is.null(polys) && nrow(polys) > 0) {
+        border_canvas <- magick::image_blank(width, height, color = "transparent")
+
+        for (p in seq_len(nrow(polys))) {
+          geom <- sf::st_geometry(polys[p, ])[[1]]
+          coords <- .extract_polygon_coords(geom, height)
+
+          if (length(coords) > 0 && length(coords$x) > 0) {
+            border_canvas <- magick::image_draw(border_canvas)
+            graphics::polygon(
+              coords$x, coords$y,
+              border = borders[i],
+              lwd = border_width,
+              col = NA
+            )
+            grDevices::dev.off()
+          }
+        }
+
+        result <- magick::image_composite(result, border_canvas, operator = "over")
+      }
+    }
+  }
+
+  # Display unless adding
+  if (!add) {
+    print(result)
+  }
+
+  invisible(result)
+}
+
+
+#' Get colors for plotting
+#' @keywords internal
+.get_plot_colors <- function(n, fill, palette, opacity = 1) {
+  if (!is.null(palette)) {
+    colors <- if (is.function(palette)) {
+      palette(n)
+    } else if (length(palette) == 1 && requireNamespace("RColorBrewer", quietly = TRUE) &&
+               palette %in% rownames(RColorBrewer::brewer.pal.info)) {
+      max_colors <- RColorBrewer::brewer.pal.info[palette, "maxcolors"]
+      RColorBrewer::brewer.pal(min(n, max_colors), palette)
+    } else {
+      # Treat as vector of colors
+      palette
+    }
+    colors <- rep_len(colors, n)
+  } else {
+    colors <- rep_len(fill, n)
+  }
+
+  # Apply opacity
+  if (opacity < 1) {
+    colors <- .add_alpha(colors, opacity)
+  }
+
+  colors
+}
+
+
+#' Add alpha to colors
+#' @keywords internal
+.add_alpha <- function(colors, alpha) {
+  rgb_vals <- grDevices::col2rgb(colors)
+  grDevices::rgb(
+    rgb_vals[1, ], rgb_vals[2, ], rgb_vals[3, ],
+    alpha = alpha * 255,
+    maxColorValue = 255
+  )
+}
+
+
+#' Darken colors for borders
+#' @keywords internal
+.darken_colors <- function(colors, factor = 0.7) {
+  sapply(colors, function(col) {
+    if (is.na(col)) return(NA_character_)
+    rgb_vals <- grDevices::col2rgb(col, alpha = TRUE)
+    grDevices::rgb(
+      rgb_vals[1, 1] * factor,
+      rgb_vals[2, 1] * factor,
+      rgb_vals[3, 1] * factor,
+      maxColorValue = 255
+    )
+  }, USE.NAMES = FALSE)
+}
+
+
+#' Extract polygon coordinates for plotting
+#' @keywords internal
+.extract_polygon_coords <- function(geom, img_height) {
+  # Handle different geometry types
+  if (inherits(geom, "POLYGON")) {
+    coords_mat <- sf::st_coordinates(geom)[, 1:2, drop = FALSE]
+  } else if (inherits(geom, "MULTIPOLYGON")) {
+    # Get coordinates from all parts
+    coords_mat <- sf::st_coordinates(geom)[, 1:2, drop = FALSE]
+  } else {
+    return(list())
+  }
+
+  if (nrow(coords_mat) == 0) {
+    return(list())
+  }
+
+  # Coordinates from .sam_as_sf_image use terra's coordinate system
+  # with extent (0, width, 0, height) where y=0 is at bottom.
+  # For magick/image_draw, y=0 is at top.
+  # Use coordinates directly - the y values from terra are already
+  # in the range [0, height] and work as image coordinates.
+  list(
+    x = coords_mat[, 1],
+    y = coords_mat[, 2]
+  )
+}
+
+
+#' Convert coordinates to SVG path string
+#' @keywords internal
+.coords_to_svg_path <- function(coords) {
+  if (length(coords$x) == 0) return("")
+
+  # Build path: M x0,y0 L x1,y1 L x2,y2 ... Z
+  parts <- sprintf("%.1f,%.1f", coords$x, coords$y)
+  paste0("M ", parts[1], " L ", paste(parts[-1], collapse = " L "), " Z")
 }

@@ -13,7 +13,7 @@
 #' @export
 #'
 #' @examples
-#' \dontrun
+#' \dontrun{
 #' # Use SAM 2 on CPU
 #' geosam_configure(model = "sam2", device = "cpu")
 #'
