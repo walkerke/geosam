@@ -26,7 +26,7 @@
 #'
 #' pads <- sam_batch(
 #'   areas = counties,
-#'   text = "well pad",
+#'   text = "swimming pool",
 #'   min_area = 500
 #' )
 #' }

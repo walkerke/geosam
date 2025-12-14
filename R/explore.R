@@ -77,7 +77,7 @@ sam_explore <- function(
 }
 
 
-#' @keywords internal
+#' @noRd
 .explore_ui <- function(source) {
 
   # Choose correct output function based on source
@@ -340,7 +340,7 @@ sam_explore <- function(
       shiny::conditionalPanel(
         condition = "input.prompt_type == 'text'",
         shiny::p(class = "help-text", "Describe objects to find in the current view."),
-        shiny::textInput("text_prompt", label = NULL, placeholder = "e.g., building, well pad, solar panel")
+        shiny::textInput("text_prompt", label = NULL, placeholder = "e.g., building, swimming pool, solar panel")
       ),
 
       # Exemplar mode panel
@@ -398,7 +398,7 @@ sam_explore <- function(
 }
 
 
-#' @keywords internal
+#' @noRd
 .explore_server <- function(source, initial_center, initial_zoom) {
   function(input, output, session) {
     # Reactive values
@@ -761,7 +761,7 @@ sam_explore <- function(
 #'
 #' @param source Requested source: "mapbox", "esri", or "maptiler"
 #' @return Resolved source (may be changed to "esri" if keys missing)
-#' @keywords internal
+#' @noRd
 .resolve_map_source <- function(source) {
   if (source == "mapbox") {
     token <- Sys.getenv("MAPBOX_PUBLIC_TOKEN", unset = "")

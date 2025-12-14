@@ -14,7 +14,8 @@ sam_detect(
   exemplar = NULL,
   source = "mapbox",
   zoom = 17,
-  threshold = 0.5
+  threshold = 0.5,
+  tiled = "auto"
 )
 }
 \arguments{
@@ -23,7 +24,7 @@ sam_detect(
 \item{bbox}{Bounding box for the area of interest. Can be a numeric vector
 \code{c(xmin, ymin, xmax, ymax)} in WGS84, or an sf/sfc object.}
 
-\item{text}{Text prompt describing objects to detect (e.g., "well pad",
+\item{text}{Text prompt describing objects to detect (e.g., "swimming pool",
 "swimming pool", "solar panel"). Uses SAM3's open-vocabulary detection.}
 
 \item{boxes}{sf object with polygons/boxes to use as box prompts.}
@@ -42,6 +43,13 @@ all similar objects in the image.}
 
 \item{threshold}{Detection confidence threshold (0-1). Lower values return
 more detections.}
+
+\item{tiled}{Control automatic tiling for large areas. One of:
+\itemize{
+\item \code{"auto"} (default): Automatically tile if bbox is large
+\item \code{TRUE}: Force tiled detection
+\item \code{FALSE}: Disable tiling (may reduce accuracy for large areas)
+}}
 }
 \value{
 A \code{geosam} object containing detection masks and metadata.
@@ -52,14 +60,26 @@ Returns NULL if no objects are detected.
 Main function for object detection using Meta's SAM3 model. Supports text
 prompts, point prompts, box prompts, and exemplar-based detection.
 }
+\details{
+For large areas, detection is automatically tiled to maintain accuracy.
+This means you can pass a large bounding box (e.g., a census tract) and
+get the same detection quality as if you manually checked each viewport.
+}
 \examples{
 \dontrun{
 # Text-based detection
 result <- sam_detect(
   bbox = c(-102.5, 31.8, -102.4, 31.9),
-  text = "well pad"
+  text = "swimming pool"
 )
 pads <- result |> sam_filter(min_area = 500) |> sam_as_sf()
+
+# Large area - automatically tiled
+result <- sam_detect(
+  bbox = c(-118.45, 34.08, -118.40, 34.12),  # ~5km area
+  text = "swimming pool",
+  zoom = 18
+)
 
 # Point prompts on existing image
 result <- sam_detect(

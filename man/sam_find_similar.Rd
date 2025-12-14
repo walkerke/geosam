@@ -18,7 +18,7 @@ in the image.
 }
 \examples{
 \dontrun{
-result <- sam_detect(image = "satellite.tif", text = "well pad")
+result <- sam_detect(image = "satellite.tif", text = "swimming pool")
 # View results, pick the best one, find all similar
 similar <- result |>
   sam_select(3) |>

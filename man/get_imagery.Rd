@@ -27,7 +27,7 @@ get_imagery(
 }}
 
 \item{zoom}{Tile zoom level (15-19). Higher values = more detail.
-Recommended: 17-18 for objects like buildings, well pads.}
+Recommended: 17-18 for objects like buildings, swimming pools.}
 
 \item{api_key}{API key for the imagery source. For Mapbox, uses
 MAPBOX_PUBLIC_TOKEN environment variable by default. For MapTiler, uses
@@ -50,6 +50,6 @@ img <- get_imagery(
 )
 
 # Use with detection
-pads <- sam_detect(image = img, text = "well pad")
+pads <- sam_detect(image = img, text = "swimming pool")
 }
 }

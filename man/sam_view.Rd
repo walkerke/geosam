@@ -4,10 +4,22 @@
 \alias{sam_view}
 \title{Interactive Viewer for SAM Detections}
 \usage{
-sam_view(x, source = c("mapbox", "esri", "maptiler"))
+sam_view(
+  x,
+  fill = "#FACC15",
+  border = "#EAB308",
+  fill_opacity = 0.5,
+  source = c("mapbox", "esri", "maptiler")
+)
 }
 \arguments{
 \item{x}{A geosam object from \code{sam_detect()}.}
+
+\item{fill}{Fill color for detection polygons. Default is "#FACC15" (yellow).}
+
+\item{border}{Border/outline color for polygons. Default is "#EAB308".}
+
+\item{fill_opacity}{Fill opacity for detection polygons (0-1). Default is 0.5.}
 
 \item{source}{Imagery source for basemap: "mapbox", "esri", or "maptiler".
 Defaults to "mapbox" but falls back to "esri" if MAPBOX_PUBLIC_TOKEN
@@ -29,5 +41,8 @@ version is view-only.
 \dontrun{
 result <- sam_detect(image = "satellite.tif", text = "building")
 refined <- sam_view(result)
+
+# Custom colors
+sam_view(result, fill = "#3B82F6", border = "#1D4ED8")
 }
 }

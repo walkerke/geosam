@@ -3,7 +3,7 @@
 #' Internal function to set up the Python environment and load the geosam module.
 #'
 #' @return The Python geosam_core module, invisibly.
-#' @keywords internal
+#' @noRd
 .init_python <- function() {
  # Return cached module if available
   if (!is.null(.geosam_env$python_module)) {
@@ -57,7 +57,7 @@
 #' Internal function to get the initialized Python module.
 #'
 #' @return The Python geosam_core module.
-#' @keywords internal
+#' @noRd
 .get_module <- function() {
   if (is.null(.geosam_env$python_module)) {
     .init_python()
@@ -71,7 +71,7 @@
 #' Internal function to check Python is ready and transformers is available.
 #'
 #' @return TRUE if ready, otherwise aborts with error.
-#' @keywords internal
+#' @noRd
 .ensure_python <- function() {
   module <- .get_module()
 
@@ -96,7 +96,7 @@
 #' @param x An sf object (points, polygons, or bbox)
 #' @param type Type of geometry to extract: "points", "boxes", or "bbox"
 #' @return List of coordinates suitable for Python
-#' @keywords internal
+#' @noRd
 .sf_to_coords <- function(x, type = c("points", "boxes", "bbox")) {
   type <- match.arg(type)
 
@@ -145,7 +145,7 @@
 #'
 #' @param path Path to GeoJSON file
 #' @return sf object or NULL if empty/error
-#' @keywords internal
+#' @noRd
 .read_geojson <- function(path) {
   if (!file.exists(path)) {
     return(NULL)
@@ -175,7 +175,7 @@
 #' @param min_area_m2 Minimum area filter in square meters
 #' @param max_area_m2 Maximum area filter in square meters
 #' @return sf object with polygons, or NULL if no valid polygons
-#' @keywords internal
+#' @noRd
 .masks_to_sf <- function(masks, scores, template_raster, min_area_m2 = 10, max_area_m2 = 100000) {
   # Read template to get extent and CRS
   template <- terra::rast(template_raster)
@@ -274,7 +274,7 @@
 #'
 #' @param image_path Path to GeoTIFF
 #' @return Numeric array (height x width x 3)
-#' @keywords internal
+#' @noRd
 .read_image_array <- function(image_path) {
   r <- terra::rast(image_path)
 
@@ -305,7 +305,7 @@
 #' @param image_path Path to the reference GeoTIFF
 #' @param input_crs CRS of input coordinates (default WGS84)
 #' @return List of pixel coordinate pairs (col, row)
-#' @keywords internal
+#' @noRd
 .geo_to_pixel <- function(coords, image_path, input_crs = 4326) {
   r <- terra::rast(image_path)
   img_crs <- terra::crs(r)
@@ -347,7 +347,7 @@
 #' @param image_path Path to the reference GeoTIFF
 #' @param input_crs CRS of input coordinates (default WGS84)
 #' @return List of pixel boxes (xmin, ymin, xmax, ymax in pixels)
-#' @keywords internal
+#' @noRd
 .geo_boxes_to_pixel <- function(boxes, image_path, input_crs = 4326) {
   r <- terra::rast(image_path)
   img_crs <- terra::crs(r)

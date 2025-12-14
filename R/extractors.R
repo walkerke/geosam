@@ -35,6 +35,28 @@ sam_as_sf <- function(x, min_area = NULL, max_area = NULL) {
     return(.sam_as_sf_image(x, min_area, max_area))
   }
 
+  # Check for pre-computed sf (from tiled detection) BEFORE validation
+
+  # Tiled detection doesn't store masks (different sizes per chunk)
+  if (!is.null(x$sf_result)) {
+    result <- x$sf_result
+
+    # Apply area filters if specified
+    if (!is.null(min_area)) {
+      result <- result[result$area_m2 >= min_area, ]
+    }
+    if (!is.null(max_area)) {
+      result <- result[result$area_m2 <= max_area, ]
+    }
+
+    if (nrow(result) == 0) {
+      return(NULL)
+    }
+
+    return(result)
+  }
+
+  # Normal path - validate geosam object
   validate_geosam(x)
 
   if (length(x$masks) == 0) {
@@ -56,7 +78,7 @@ sam_as_sf <- function(x, min_area = NULL, max_area = NULL) {
 
 
 #' Convert geosam_image masks to sf (pixel coordinates)
-#' @keywords internal
+#' @noRd
 .sam_as_sf_image <- function(x, min_area = NULL, max_area = NULL) {
   validate_geosam_image(x)
 
@@ -258,6 +280,12 @@ sam_count <- function(x) {
   if (!inherits(x, c("geosam", "geosam_image"))) {
     cli::cli_abort("{.arg x} must be a {.cls geosam} or {.cls geosam_image} object.")
   }
+
+  # For tiled results, count from pre-computed sf
+  if (!is.null(x$sf_result)) {
+    return(nrow(x$sf_result))
+  }
+
   length(x$masks)
 }
 

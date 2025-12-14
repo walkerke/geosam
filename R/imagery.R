@@ -12,7 +12,7 @@
 #'   - "maptiler": Requires `MAPTILER_API_KEY` environment variable
 #'   - "google": Google satellite tiles (no API key required)
 #' @param zoom Tile zoom level (15-19). Higher values = more detail.
-#'   Recommended: 17-18 for objects like buildings, well pads.
+#'   Recommended: 17-18 for objects like buildings, swimming pools.
 #' @param api_key API key for the imagery source. For Mapbox, uses
 #'   MAPBOX_PUBLIC_TOKEN environment variable by default. For MapTiler, uses
 #'   MAPTILER_API_KEY environment variable by default.
@@ -31,7 +31,7 @@
 #' )
 #'
 #' # Use with detection
-#' pads <- sam_detect(image = img, text = "well pad")
+#' pads <- sam_detect(image = img, text = "swimming pool")
 #' }
 get_imagery <- function(
     bbox,
@@ -119,7 +119,7 @@ get_imagery <- function(
 
 
 #' Convert lon/lat to tile coordinates
-#' @keywords internal
+#' @noRd
 .lonlat_to_tile <- function(lon, lat, zoom) {
   n <- 2^zoom
   x <- floor((lon + 180) / 360 * n)
@@ -130,7 +130,7 @@ get_imagery <- function(
 
 
 #' Convert tile coordinates to lon/lat (NW corner)
-#' @keywords internal
+#' @noRd
 .tile_to_lonlat <- function(x, y, zoom) {
   n <- 2^zoom
   lon <- x / n * 360 - 180
@@ -141,7 +141,7 @@ get_imagery <- function(
 
 
 #' Convert lon/lat to Web Mercator
-#' @keywords internal
+#' @noRd
 .lonlat_to_mercator <- function(lon, lat) {
   x <- lon * 20037508.34 / 180
   y <- log(tan((90 + lat) * pi / 360)) / (pi / 180)
@@ -151,7 +151,7 @@ get_imagery <- function(
 
 
 #' Build tile URL
-#' @keywords internal
+#' @noRd
 .build_tile_url <- function(x, y, zoom, source, api_key) {
   switch(source,
     mapbox = sprintf(
@@ -175,7 +175,7 @@ get_imagery <- function(
 
 
 #' Download a single tile
-#' @keywords internal
+#' @noRd
 .download_tile <- function(x, y, zoom, source, api_key) {
   url <- .build_tile_url(x, y, zoom, source, api_key)
 
@@ -196,7 +196,7 @@ get_imagery <- function(
 
 
 #' Download and merge tiles into GeoTIFF
-#' @keywords internal
+#' @noRd
 .download_tiles <- function(bbox, output, source, zoom, api_key) {
   west <- bbox[1]
   south <- bbox[2]
@@ -291,6 +291,94 @@ get_imagery <- function(
 }
 
 
+#' Calculate pixel dimensions of a bbox at a given zoom
+#' @param bbox Numeric vector c(west, south, east, north)
+#' @param zoom Zoom level
+#' @param source Imagery source (affects tile size)
+#' @return Named list with width, height, n_tiles_x, n_tiles_y
+#' @noRd
+.calc_bbox_pixels <- function(bbox, zoom, source = "mapbox") {
+  west <- bbox[1]
+  south <- bbox[2]
+  east <- bbox[3]
+  north <- bbox[4]
+
+  # Get tile range
+  nw_tile <- .lonlat_to_tile(west, north, zoom)
+  se_tile <- .lonlat_to_tile(east, south, zoom)
+
+  n_tiles_x <- abs(se_tile[1] - nw_tile[1]) + 1
+  n_tiles_y <- abs(se_tile[2] - nw_tile[2]) + 1
+
+  # Tile size: Mapbox @2x = 512, others = 256
+ tile_size <- if (source == "mapbox") 512L else 256L
+
+  list(
+    width = n_tiles_x * tile_size,
+    height = n_tiles_y * tile_size,
+    n_tiles_x = n_tiles_x,
+    n_tiles_y = n_tiles_y,
+    tile_size = tile_size
+  )
+}
+
+
+#' Split a bbox into optimal detection tiles
+#'
+#' Splits a large bbox into smaller tiles suitable for SAM detection.
+#' Target tile size is approximately 1000-1500 pixels.
+#'
+#' @param bbox Numeric vector c(west, south, east, north)
+#' @param zoom Zoom level
+#' @param source Imagery source
+#' @param max_pixels Maximum pixels in either dimension before tiling (default 1500)
+#' @return List of bbox vectors, or original bbox if no tiling needed
+#' @noRd
+.split_bbox_for_detection <- function(bbox, zoom, source = "mapbox", max_pixels = 1500) {
+  dims <- .calc_bbox_pixels(bbox, zoom, source)
+
+  # Check if tiling is needed
+  if (dims$width <= max_pixels && dims$height <= max_pixels) {
+    return(list(bbox))
+  }
+
+  # Calculate how many tiles we need in each direction
+  # Target ~1000-1200 pixels per tile
+  target_pixels <- 1000
+
+  tiles_x <- ceiling(dims$width / target_pixels)
+  tiles_y <- ceiling(dims$height / target_pixels)
+
+  west <- bbox[1]
+  south <- bbox[2]
+  east <- bbox[3]
+  north <- bbox[4]
+
+  width <- east - west
+  height <- north - south
+
+  tile_width <- width / tiles_x
+  tile_height <- height / tiles_y
+
+  # Generate tile bboxes
+  tile_bboxes <- list()
+
+  for (i in seq_len(tiles_x)) {
+    for (j in seq_len(tiles_y)) {
+      tile_west <- west + (i - 1) * tile_width
+      tile_east <- tile_west + tile_width
+      tile_south <- south + (j - 1) * tile_height
+      tile_north <- tile_south + tile_height
+
+      tile_bboxes[[length(tile_bboxes) + 1]] <- c(tile_west, tile_south, tile_east, tile_north)
+    }
+  }
+
+  attr(tile_bboxes, "grid") <- c(tiles_x, tiles_y)
+  tile_bboxes
+}
+
+
 #' Clear Imagery Cache
 #'
 #' Clears cached satellite imagery tiles.
@@ -313,7 +401,7 @@ geosam_clear_cache <- function() {
 
 
 #' Get display name for imagery source
-#' @keywords internal
+#' @noRd
 .source_display_name <- function(source) {
   switch(source,
     mapbox = "Mapbox",
@@ -326,7 +414,7 @@ geosam_clear_cache <- function() {
 
 
 #' Notify user of Terms of Service (once per session per provider)
-#' @keywords internal
+#' @noRd
 .notify_tos <- function(source) {
   # Check if already shown this session
   if (source %in% .geosam_env$tos_shown) {

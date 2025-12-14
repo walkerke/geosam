@@ -59,12 +59,10 @@ def load_model(device: Optional[str] = None) -> bool:
     from transformers import Sam3Processor, Sam3Model
 
     _DEVICE = device or get_device()
-    print(f"Loading SAM3 model on {_DEVICE}...")
 
     _MODEL = Sam3Model.from_pretrained("facebook/sam3").to(_DEVICE)
     _PROCESSOR = Sam3Processor.from_pretrained("facebook/sam3")
 
-    print("SAM3 model loaded and ready!")
     return True
 
 
@@ -89,12 +87,10 @@ def load_tracker_model(device: Optional[str] = None) -> bool:
     from transformers import Sam3TrackerProcessor, Sam3TrackerModel
 
     _DEVICE = device or get_device()
-    print(f"Loading SAM3 Tracker model on {_DEVICE}...")
 
     _TRACKER_MODEL = Sam3TrackerModel.from_pretrained("facebook/sam3").to(_DEVICE)
     _TRACKER_PROCESSOR = Sam3TrackerProcessor.from_pretrained("facebook/sam3")
 
-    print("SAM3 Tracker model loaded and ready!")
     return True
 
 
@@ -152,7 +148,6 @@ def detect_text(
     pil_image = Image.fromarray(img_array.astype(np.uint8))
 
     # Run inference with text prompt
-    print(f"Running SAM3 with text prompt: '{text_prompt}'")
     inputs = _PROCESSOR(images=pil_image, text=text_prompt, return_tensors="pt").to(_DEVICE)
 
     with torch.no_grad():
@@ -167,8 +162,6 @@ def detect_text(
 
     masks = results["masks"]
     scores = results["scores"]
-
-    print(f"SAM3 found {len(masks)} objects")
 
     # Convert to numpy arrays for R
     mask_list = [mask.cpu().numpy().astype(np.uint8) for mask in masks]
@@ -205,8 +198,6 @@ def detect_boxes(
 
     height, width = img_array.shape[:2]
     pil_image = Image.fromarray(img_array.astype(np.uint8))
-
-    print(f"Running SAM3 Tracker with {len(pixel_boxes)} box prompt(s)")
 
     # Run inference with box prompts using tracker model
     inputs = _TRACKER_PROCESSOR(
@@ -245,8 +236,6 @@ def detect_boxes(
                 mask_list.append(mask)
                 score_list.append(best_score)
 
-    print(f"SAM3 Tracker found {len(mask_list)} objects")
-
     return {
         "masks": mask_list,
         "scores": score_list,
@@ -281,8 +270,6 @@ def detect_exemplar(
     height, width = img_array.shape[:2]
     pil_image = Image.fromarray(img_array.astype(np.uint8))
 
-    print(f"Running SAM3 exemplar detection with box: {pixel_box}")
-
     # Use input_boxes with positive label (1) for exemplar-based detection
     # This tells SAM3 "find all objects similar to what's in this box"
     input_boxes = [[pixel_box]]  # [batch, num_boxes, 4]
@@ -308,8 +295,6 @@ def detect_exemplar(
 
     masks = results["masks"]
     scores = results["scores"]
-
-    print(f"SAM3 exemplar detection found {len(masks)} objects")
 
     # Convert to numpy arrays for R
     mask_list = [mask.cpu().numpy().astype(np.uint8) for mask in masks]
@@ -351,8 +336,6 @@ def detect_points(
     height, width = img_array.shape[:2]
     pil_image = Image.fromarray(img_array.astype(np.uint8))
 
-    print(f"Running SAM3 Tracker with {len(pixel_points)} point prompt(s)")
-
     # Ensure labels is a list (reticulate may pass single int)
     if isinstance(labels, (int, np.integer)):
         labels = [labels]
@@ -391,9 +374,6 @@ def detect_points(
 
     iou_scores = outputs.iou_scores[0]  # First batch
 
-    print(f"Mask shape: {masks.shape}, Score shape: {iou_scores.shape}")
-    print(f"multi_object: {multi_object}")
-
     mask_list = []
     score_list = []
 
@@ -419,8 +399,6 @@ def detect_points(
             mask = masks[best_idx].cpu().numpy().astype(np.uint8)
             mask_list.append(mask)
             score_list.append(best_score)
-
-    print(f"SAM3 Tracker found {len(mask_list)} objects")
 
     return {
         "masks": mask_list,

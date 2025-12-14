@@ -53,7 +53,7 @@ Displays satellite imagery with detection polygons overlaid using terra.
 \dontrun{
 result <- sam_detect(
   bbox = c(-102.63, 31.81, -102.62, 31.83),
-  text = "well pad"
+  text = "swimming pool"
 )
 plot(result)
 

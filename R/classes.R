@@ -12,7 +12,7 @@
 #' @param history List tracking refinement steps.
 #'
 #' @return A geosam object.
-#' @keywords internal
+#' @noRd
 new_geosam <- function(
     image_path = character(),
     masks = list(),
@@ -45,7 +45,9 @@ new_geosam <- function(
 #' @return Invisibly returns `x`.
 #' @export
 print.geosam <- function(x, ...) {
-  n_detections <- length(x$masks)
+  # Handle tiled results
+  is_tiled <- !is.null(x$sf_result)
+  n_detections <- if (is_tiled) nrow(x$sf_result) else length(x$masks)
 
   cli::cli_text("{.cls geosam} object")
   cli::cli_text("
@@ -62,11 +64,20 @@ print.geosam <- function(x, ...) {
     cli::cli_text("  Prompt: {prompt_desc}")
   }
 
-  if (length(x$image_path) > 0 && nchar(x$image_path) > 0) {
+  if (is_tiled) {
+    # Show tiled detection info
+    if (length(x$history) > 0 && !is.null(x$history[[1]]$n_tiles)) {
+      grid <- x$history[[1]]$grid
+      n_tiles <- x$history[[1]]$n_tiles
+      cli::cli_text("  Mode: tiled ({grid[1]}x{grid[2]} = {n_tiles} tiles)")
+    } else {
+      cli::cli_text("  Mode: tiled")
+    }
+  } else if (length(x$image_path) > 0 && nchar(x$image_path) > 0) {
     cli::cli_text("  Image: {basename(x$image_path)}")
   }
 
-  if (length(x$history) > 0) {
+  if (length(x$history) > 0 && is.null(x$history[[1]]$n_tiles)) {
     cli::cli_text("  History: {length(x$history)} refinement step{?s}")
   }
 
@@ -96,7 +107,7 @@ is_geosam <- function(x) {
 #'
 #' @param x A geosam object.
 #' @return The validated geosam object (invisibly).
-#' @keywords internal
+#' @noRd
 validate_geosam <- function(x) {
   if (!inherits(x, "geosam")) {
     cli::cli_abort("{.arg x} must be a {.cls geosam} object.")
@@ -128,7 +139,7 @@ validate_geosam <- function(x) {
 #' @param history List tracking refinement steps.
 #'
 #' @return A geosam_image object.
-#' @keywords internal
+#' @noRd
 new_geosam_image <- function(
     image_path = character(),
     masks = list(),
@@ -214,7 +225,7 @@ is_geosam_image <- function(x) {
 #'
 #' @param x A geosam_image object.
 #' @return The validated geosam_image object (invisibly).
-#' @keywords internal
+#' @noRd
 validate_geosam_image <- function(x) {
 
   if (!inherits(x, "geosam_image")) {
@@ -266,7 +277,7 @@ validate_geosam_image <- function(x) {
 #' \dontrun{
 #' result <- sam_detect(
 #'   bbox = c(-102.63, 31.81, -102.62, 31.83),
-#'   text = "well pad"
+#'   text = "swimming pool"
 #' )
 #' plot(result)
 #'
@@ -284,35 +295,36 @@ plot.geosam <- function(x, fill = "#FACC15", border = NULL, palette = NULL,
                         opacity = 0.5, lwd = 1, main = NULL, add = FALSE, ...) {
   validate_geosam(x)
 
-  if (length(x$masks) == 0) {
+  # Get detection polygons
+  polys <- sam_as_sf(x)
+
+  if (is.null(polys) || nrow(polys) == 0) {
     cli::cli_alert_warning("No detections to plot.")
     return(invisible(NULL))
   }
 
-  # Check image exists
-  if (!file.exists(x$image_path)) {
-    cli::cli_abort("Image file not found: {x$image_path}")
-  }
-
-  # Get detection polygons
- polys <- sam_as_sf(x)
-
-  if (is.null(polys) || nrow(polys) == 0) {
-    cli::cli_alert_warning("No polygons to plot.")
-    return(invisible(NULL))
-  }
+  # Check if we have an image to display
+  has_image <- length(x$image_path) > 0 &&
+               nchar(x$image_path) > 0 &&
+               file.exists(x$image_path)
 
   # Load imagery with terra and plot base if not adding
   if (!add) {
-    img <- terra::rast(x$image_path)
-    terra::plotRGB(img, main = main, ...)
-  }
+    if (has_image) {
+      img <- terra::rast(x$image_path)
+      terra::plotRGB(img, main = main, ...)
 
-  # Transform to image CRS if needed
-  if (!add) {
-    img_crs <- terra::crs(img)
-    if (!is.na(img_crs) && img_crs != "") {
-      polys <- sf::st_transform(polys, img_crs)
+      # Transform polygons to image CRS
+      img_crs <- terra::crs(img)
+      if (!is.na(img_crs) && img_crs != "") {
+        polys <- sf::st_transform(polys, img_crs)
+      }
+    } else {
+      # No image available, just plot polygons
+      if (is.null(main)) {
+        main <- "Detection Results"
+      }
+      plot(sf::st_geometry(polys), col = NA, border = NA, main = main, ...)
     }
   }
 
@@ -322,7 +334,6 @@ plot.geosam <- function(x, fill = "#FACC15", border = NULL, palette = NULL,
 
   # Generate border colors
   if (is.null(border)) {
-    # Auto-darken fill colors
     borders <- .darken_colors(colors)
   } else if (identical(border, NA)) {
     borders <- NA
@@ -513,7 +524,7 @@ plot.geosam_image <- function(x, fill = "#FACC15", border = NULL, palette = NULL
 
 
 #' Get colors for plotting
-#' @keywords internal
+#' @noRd
 .get_plot_colors <- function(n, fill, palette, opacity = 1) {
   if (!is.null(palette)) {
     colors <- if (is.function(palette)) {
@@ -541,7 +552,7 @@ plot.geosam_image <- function(x, fill = "#FACC15", border = NULL, palette = NULL
 
 
 #' Add alpha to colors
-#' @keywords internal
+#' @noRd
 .add_alpha <- function(colors, alpha) {
   rgb_vals <- grDevices::col2rgb(colors)
   grDevices::rgb(
@@ -553,7 +564,7 @@ plot.geosam_image <- function(x, fill = "#FACC15", border = NULL, palette = NULL
 
 
 #' Darken colors for borders
-#' @keywords internal
+#' @noRd
 .darken_colors <- function(colors, factor = 0.7) {
   sapply(colors, function(col) {
     if (is.na(col)) return(NA_character_)
@@ -569,7 +580,7 @@ plot.geosam_image <- function(x, fill = "#FACC15", border = NULL, palette = NULL
 
 
 #' Extract polygon coordinates for plotting
-#' @keywords internal
+#' @noRd
 .extract_polygon_coords <- function(geom, img_height) {
   # Handle different geometry types
   if (inherits(geom, "POLYGON")) {
@@ -598,7 +609,7 @@ plot.geosam_image <- function(x, fill = "#FACC15", border = NULL, palette = NULL
 
 
 #' Convert coordinates to SVG path string
-#' @keywords internal
+#' @noRd
 .coords_to_svg_path <- function(coords) {
   if (length(coords$x) == 0) return("")
 

@@ -135,7 +135,7 @@ sam_select <- function(x, index) {
 #'
 #' @return A new geosam object with refined detections.
 #'
-#' @export
+#' @noRd
 #'
 #' @examples
 #' \dontrun{
@@ -221,7 +221,7 @@ sam_refine <- function(x, points, labels = NULL) {
 #'
 #' @examples
 #' \dontrun{
-#' result <- sam_detect(image = "satellite.tif", text = "well pad")
+#' result <- sam_detect(image = "satellite.tif", text = "swimming pool")
 #' # View results, pick the best one, find all similar
 #' similar <- result |>
 #'   sam_select(3) |>
@@ -256,15 +256,15 @@ sam_find_similar <- function(x) {
   exemplar_box <- c(bbox["xmin"], bbox["ymin"], bbox["xmax"], bbox["ymax"])
 
   # Convert to pixel coordinates
-  pixel_boxes <- .geo_boxes_to_pixel(list(as.numeric(exemplar_box)), x$image_path)
+  pixel_box <- .geo_boxes_to_pixel(list(as.numeric(exemplar_box)), x$image_path)[[1]]
 
-  # Read image and run detection
+  # Read image and run detection using exemplar mode (finds similar objects)
   img_array <- .read_image_array(x$image_path)
   module <- .get_module()
 
-  result <- module$detect_boxes(
+  result <- module$detect_exemplar(
     img_array = img_array,
-    pixel_boxes = pixel_boxes,
+    pixel_box = pixel_box,
     threshold = 0.5
   )
 

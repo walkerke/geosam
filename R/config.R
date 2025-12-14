@@ -57,7 +57,7 @@ geosam_configure <- function(
 #' Internal function to determine the device to use for inference.
 #'
 #' @return Character string: "mps", "cuda", or "cpu"
-#' @keywords internal
+#' @noRd
 .get_device <- function() {
   device <- getOption("geosam.device", "auto")
 
@@ -94,7 +94,7 @@ geosam_configure <- function(
 #' Internal function to get the Mapbox access token from various sources.
 #'
 #' @return Character string with the token, or NULL if not found.
-#' @keywords internal
+#' @noRd
 .get_mapbox_token <- function() {
   # Priority order:
   # 1. Package option
@@ -131,7 +131,7 @@ geosam_configure <- function(
 #' Internal function to get the model name for HuggingFace.
 #'
 #' @return Character string with model identifier
-#' @keywords internal
+#' @noRd
 .get_model_id <- function() {
   model <- getOption("geosam.model", "sam2")
 

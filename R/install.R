@@ -96,7 +96,7 @@ geosam_install <- function(
 
 
 #' Install using uv (recommended)
-#' @keywords internal
+#' @noRd
 .install_uv <- function(envname, gpu, python_version) {
  # Check if uv is installed
   uv_path <- Sys.which("uv")
@@ -172,7 +172,7 @@ geosam_install <- function(
 
 
 #' Run uv pip install
-#' @keywords internal
+#' @noRd
 .uv_pip_install <- function(env_path, packages) {
   # Quote each package spec to handle >=
   pkgs_quoted <- paste(shQuote(packages), collapse = " ")
@@ -190,7 +190,7 @@ geosam_install <- function(
 
 
 #' Install using virtualenv (via reticulate)
-#' @keywords internal
+#' @noRd
 .install_virtualenv <- function(envname, gpu, python_version) {
   # Check Python availability
   python_cmd <- Sys.which("python3")
@@ -270,7 +270,7 @@ geosam_install <- function(
 
 
 #' Install using conda
-#' @keywords internal
+#' @noRd
 .install_conda <- function(envname, gpu, python_version) {
   # Check if conda is available
   tryCatch({
@@ -346,7 +346,7 @@ geosam_install <- function(
 
 
 #' Get PyTorch packages based on GPU availability
-#' @keywords internal
+#' @noRd
 .get_pytorch_packages <- function(gpu) {
   if (gpu && .is_apple_silicon()) {
     # Apple Silicon - MPS support comes automatically
@@ -362,7 +362,7 @@ geosam_install <- function(
 
 
 #' Save environment configuration
-#' @keywords internal
+#' @noRd
 .save_env_config <- function(env_path, method) {
   config_dir <- rappdirs::user_config_dir("geosam")
   dir.create(config_dir, recursive = TRUE, showWarnings = FALSE)
@@ -378,7 +378,7 @@ geosam_install <- function(
 
 
 #' Load environment configuration
-#' @keywords internal
+#' @noRd
 .load_env_config <- function() {
   config_path <- file.path(rappdirs::user_config_dir("geosam"), "env_config.rds")
 
@@ -391,7 +391,7 @@ geosam_install <- function(
 
 
 #' Store HuggingFace token
-#' @keywords internal
+#' @noRd
 .store_hf_token <- function(hf_token) {
   cli::cli_alert_info("Storing HuggingFace token...")
   Sys.setenv(HF_TOKEN = hf_token)
@@ -509,7 +509,7 @@ geosam_status <- function() {
 
 
 #' Activate the geosam Python environment
-#' @keywords internal
+#' @noRd
 .activate_env <- function(config = NULL) {
   if (is.null(config)) {
     config <- .load_env_config()
@@ -535,7 +535,7 @@ geosam_status <- function() {
 
 
 #' Detect GPU availability
-#' @keywords internal
+#' @noRd
 .detect_gpu <- function() {
   if (Sys.info()["sysname"] == "Darwin") {
     return(.is_apple_silicon())
@@ -550,7 +550,7 @@ geosam_status <- function() {
 
 
 #' Detect Apple Silicon
-#' @keywords internal
+#' @noRd
 .is_apple_silicon <- function() {
   if (Sys.info()["sysname"] != "Darwin") {
     return(FALSE)

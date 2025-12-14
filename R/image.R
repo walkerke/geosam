@@ -160,7 +160,7 @@ sam_image <- function(
 #'
 #' @param img A magick image object
 #' @return Numeric array (height x width x 3)
-#' @keywords internal
+#' @noRd
 .read_image_array_magick <- function(img) {
   info <- magick::image_info(img)
   width <- info$width
@@ -187,7 +187,7 @@ sam_image <- function(
 #'
 #' @param points Matrix, data.frame, or list of point coordinates
 #' @return Matrix with columns (x, y)
-#' @keywords internal
+#' @noRd
 .normalize_points <- function(points) {
   if (is.data.frame(points)) {
     points <- as.matrix(points[, 1:2])
@@ -211,7 +211,7 @@ sam_image <- function(
 #'
 #' @param boxes Matrix, data.frame, or vector of box coordinates
 #' @return List of [xmin, ymin, xmax, ymax] vectors for Python
-#' @keywords internal
+#' @noRd
 .normalize_boxes <- function(boxes) {
   if (is.data.frame(boxes)) {
     boxes <- as.matrix(boxes[, 1:4])
@@ -235,7 +235,7 @@ sam_image <- function(
 #'
 #' @param bg_color Background color (default "white")
 #' @return A list suitable for maplibre() style parameter
-#' @keywords internal
+#' @noRd
 .blank_maplibre_style <- function(bg_color = "white") {
   list(
     version = 8L,
@@ -258,7 +258,7 @@ sam_image <- function(
 #'
 #' @param image_path Path to image file
 #' @return A base64-encoded data URI string
-#' @keywords internal
+#' @noRd
 .image_to_data_uri <- function(image_path) {
   img <- magick::image_read(image_path)
 
@@ -283,7 +283,7 @@ sam_image <- function(
 #' @param width Image width in pixels
 #' @param height Image height in pixels
 #' @return Named list with xmin, xmax, ymin, ymax
-#' @keywords internal
+#' @noRd
 .image_extent <- function(width, height) {
   scale <- 0.0001
   list(
@@ -301,7 +301,7 @@ sam_image <- function(
 #' @param y Y pixel coordinate (from top)
 #' @param height Image height in pixels
 #' @return Named vector with lng, lat
-#' @keywords internal
+#' @noRd
 .pixel_to_fake_geo <- function(x, y, height) {
   scale <- 0.0001
   c(
@@ -317,7 +317,7 @@ sam_image <- function(
 #' @param lat Latitude (fake)
 #' @param height Image height in pixels
 #' @return Named vector with x, y (pixel coords, y from top)
-#' @keywords internal
+#' @noRd
 .fake_geo_to_pixel <- function(lng, lat, height) {
   scale <- 0.0001
   c(
@@ -405,7 +405,7 @@ sam_explore_image <- function(image) {
 }
 
 
-#' @keywords internal
+#' @noRd
 .explore_image_ui <- function() {
   shiny::fillPage(
     shiny::tags$head(
@@ -675,7 +675,7 @@ sam_explore_image <- function(image) {
 }
 
 
-#' @keywords internal
+#' @noRd
 .explore_image_server <- function(image_path, img_data_uri, img_coords, img_ext, img_width, img_height) {
   function(input, output, session) {
     # Reactive values
@@ -932,7 +932,7 @@ sam_explore_image <- function(image) {
 #' @param sf_obj An sf object with pixel coordinates
 #' @param img_height Image height in pixels
 #' @return An sf object with fake WGS84 coordinates
-#' @keywords internal
+#' @noRd
 .convert_pixel_sf_to_geo <- function(sf_obj, img_height) {
   scale <- 0.0001
 
@@ -1005,7 +1005,7 @@ sam_view_image <- function(x) {
 }
 
 
-#' @keywords internal
+#' @noRd
 .view_image_ui <- function() {
   shiny::fillPage(
     shiny::tags$head(
@@ -1102,7 +1102,7 @@ sam_view_image <- function(x) {
 }
 
 
-#' @keywords internal
+#' @noRd
 .view_image_server <- function(geosam_img, img_data_uri, img_coords, img_ext, img_width, img_height) {
   function(input, output, session) {
     # Convert masks to sf for display
