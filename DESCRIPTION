@@ -24,12 +24,12 @@ Imports:
     rappdirs,
     httr2,
     magick,
-    terra
+    terra,
+    mapgl,
+    shiny
 Suggests:
     stars,
     mapboxapi,
-    mapgl,
-    shiny,
     RColorBrewer,
     testthat (>= 3.0.0),
     knitr,
