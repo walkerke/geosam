@@ -24,7 +24,14 @@
 #'
 #' **uv (recommended)**: Fast, modern Python package manager. Install uv first:
 #' ```
+#' # macOS/Linux
 #' curl -LsSf https://astral.sh/uv/install.sh | sh
+#'
+#' # Windows (PowerShell)
+#' powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+#'
+#' # Or via pip (any platform)
+#' pip install uv
 #' ```
 #'
 #' **virtualenv**: Uses Python's built-in venv via reticulate. Requires Python 3.12+
@@ -98,14 +105,22 @@ geosam_install <- function(
 #' Install using uv (recommended)
 #' @noRd
 .install_uv <- function(envname, gpu, python_version) {
- # Check if uv is installed
+  # Check if uv is installed
   uv_path <- Sys.which("uv")
   if (uv_path == "") {
-    cli::cli_abort(c(
-      "uv is not installed.",
-      "i" = "Install uv with: {.code curl -LsSf https://astral.sh/uv/install.sh | sh}",
-      "i" = "Or use {.code method = 'virtualenv'} instead."
-    ))
+    if (.Platform$OS.type == "windows") {
+      cli::cli_abort(c(
+        "uv is not installed.",
+        "i" = "Install uv with: {.code pip install uv}",
+        "i" = "Or use {.code method = 'conda'} instead (recommended for Windows)."
+      ))
+    } else {
+      cli::cli_abort(c(
+        "uv is not installed.",
+        "i" = "Install uv with: {.code curl -LsSf https://astral.sh/uv/install.sh | sh}",
+        "i" = "Or use {.code method = 'virtualenv'} instead."
+      ))
+    }
   }
 
   # Determine environment path - use path without spaces to avoid issues
@@ -137,8 +152,12 @@ geosam_install <- function(
     return(FALSE)
   }
 
-  # Verify it was created
-  python_path <- file.path(env_path, "bin", "python")
+  # Verify it was created (path differs on Windows vs Unix)
+  if (.Platform$OS.type == "windows") {
+    python_path <- file.path(env_path, "Scripts", "python.exe")
+  } else {
+    python_path <- file.path(env_path, "bin", "python")
+  }
   if (!file.exists(python_path)) {
     cli::cli_alert_danger("Environment creation failed - python not found at {python_path}")
     return(FALSE)
@@ -396,8 +415,8 @@ geosam_install <- function(
   cli::cli_alert_info("Storing HuggingFace token...")
   Sys.setenv(HF_TOKEN = hf_token)
 
-  # Save to .Renviron for persistence
-  renviron_path <- file.path(Sys.getenv("HOME"), ".Renviron")
+  # Save to .Renviron for persistence (use path.expand for Windows compatibility)
+  renviron_path <- file.path(path.expand("~"), ".Renviron")
   if (file.exists(renviron_path)) {
     lines <- readLines(renviron_path)
     lines <- lines[!grepl("^HF_TOKEN=", lines)]

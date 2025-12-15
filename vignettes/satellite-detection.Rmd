@@ -1,0 +1,138 @@
+---
+title: "Satellite imagery detection"
+format: html
+editor: visual
+---
+
+geosam's primary use case is detecting objects in satellite imagery. Results are returned as georeferenced sf polygons that can be used directly in spatial analysis workflows.
+
+### Downloading imagery
+
+The `get_imagery()` function downloads satellite tiles and mosaics them into a GeoTIFF:
+
+``` r
+library(geosam)
+
+img <- get_imagery(
+  bbox = c(-118.42, 34.08, -118.40, 34.10),
+  source = "mapbox",
+  zoom = 18
+)
+```
+
+<!-- TODO: Explain bbox formats (numeric vector, sf object) -->
+<!-- TODO: Zoom level recommendations by object type -->
+<!-- TODO: Compare imagery sources -->
+
+### Text prompt detection
+
+Describe what you're looking for in natural language:
+``` r
+pools <- sam_detect(
+  bbox = c(-118.42, 34.08, -118.40, 34.10),
+  text = "swimming pool",
+  source = "mapbox",
+  zoom = 18
+)
+```
+
+<!-- TODO: Tips for effective prompts -->
+<!-- TODO: Example prompts that work well -->
+
+### Working with existing imagery
+
+If you have your own GeoTIFF:
+
+``` r
+result <- sam_detect(
+  image = "path/to/your/image.tif",
+  text = "building"
+)
+```
+
+### Large area detection
+
+For large areas, geosam automatically tiles the detection to maintain accuracy:
+
+``` r
+# This bbox is ~4 km² - geosam will tile automatically
+large_result <- sam_detect(
+  bbox = c(-118.45, 34.05, -118.35, 34.15),
+  text = "swimming pool",
+  zoom = 18
+)
+```
+
+<!-- TODO: Explain tiling behavior -->
+<!-- TODO: Progress display -->
+
+### Extracting results
+
+Convert detections to sf polygons:
+
+``` r
+pools_sf <- sam_as_sf(pools)
+```
+
+Filter by area or confidence:
+
+``` r
+# Filter small detections and low confidence
+filtered <- pools |>
+ sam_filter(min_area = 20, min_score = 0.6) |>
+  sam_as_sf()
+```
+
+<!-- TODO: Explain area units (square meters) -->
+
+### Viewing results
+
+Interactive viewer with confidence filtering:
+
+``` r
+sam_view(pools)
+```
+
+Static plot:
+
+``` r
+plot(pools)
+plot(pools, palette = "Set2")
+```
+
+<!-- TODO: Screenshot of sam_view -->
+<!-- TODO: Plot customization options -->
+
+### Exemplar detection
+
+Find all objects similar to one example:
+
+``` r
+# Use an sf polygon as exemplar
+similar <- sam_detect(
+  image = "satellite.tif",
+  exemplar = my_example_polygon
+)
+```
+
+<!-- TODO: When to use exemplar vs text -->
+
+### Batch processing
+
+Process multiple locations:
+
+``` r
+bboxes <- list(
+  site1 = c(-118.42, 34.08, -118.40, 34.10),
+  site2 = c(-118.35, 34.05, -118.33, 34.07)
+)
+
+results <- sam_batch(
+  bboxes = bboxes,
+  text = "swimming pool",
+  source = "mapbox",
+  zoom = 18
+)
+```
+
+<!-- TODO: Batch processing tips -->

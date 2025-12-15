@@ -74,3 +74,12 @@ sam_image("~/Downloads/mavs.jpeg", "basketball")
 library(geosam)
 
 sam_explore_image("~/Downloads/mavs.jpeg")
+
+library(geosam)
+
+pads <- sam_detect(
+  bbox = c(-103.625120, 32.070631, -103.298105, 32.211333),
+  text = "white or tan cleared area",
+  source = "mapbox",
+  zoom = 16
+)

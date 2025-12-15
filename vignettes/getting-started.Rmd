@@ -1,0 +1,101 @@
+---
+title: "Getting started with geosam"
+format: html
+editor: visual
+eval: false
+---
+
+geosam provides an R interface to Meta's Segment Anything Model 3 (SAM3) for detecting objects in satellite imagery and photos. Unlike traditional computer vision approaches, SAM3 lets you describe what you're looking for in plain text—no training data or model fine-tuning required.
+
+The package is inspired by Python's segment-geospatial package, which offers similar functionality for R users.  This package offers an R-native API to R users, linking to packages such as terra for spatial workflows and magick for image manipulation.  It also includes tools for interactive viewing and extraction with the mapgl R package.  
+
+### Installation
+
+Getting set up with geosam takes a few steps.  First, install the package from GitHub:
+
+``` r
+remotes::install_github("walkerke/geosam")
+```
+
+Or: 
+
+```r
+pak::pak("walkerke/geosam")
+```
+
+Once installed, load the package then set up a SAM3 Python environment with `geosam_install()`.  By default, if run with no arguments, `geosam_install()` will use __uv__ for the Python environment.  
+
+``` r
+library(geosam)
+geosam_install()
+```
+
+This creates a dedicated uv environment with PyTorch and HuggingFace transformers.
+
+If you prefer to use __venv__ or __conda__ for Python environment management, you can supply the appropriate argument to `geosam_install()`: 
+
+```r
+geosam_install(method = "conda") # or method = "virtualenv"
+```
+
+This will set up a Python environment named `geosam` unless you supply an alternative name to `envname`.
+
+### Authentication
+
+You'll need a HuggingFace account with access to SAM3 to use geosam.  
+<!-- TODO: Link to HuggingFace SAM3 model page, explain how to get access -->
+
+``` r
+Sys.setenv(HF_TOKEN = "your_huggingface_token")
+```
+
+For satellite imagery via Mapbox:
+
+``` r
+Sys.setenv(MAPBOX_PUBLIC_TOKEN = "your_mapbox_token")
+```
+
+Alternatively, Esri imagery works without an API key.
+
+### Check your setup
+
+Verify everything is working:
+
+``` r
+geosam_status()
+```
+
+### Your first detection
+
+Let's detect swimming pools in a neighborhood:
+
+``` r
+library(geosam)
+
+pools <- sam_detect(
+  bbox = c(-118.42, 34.08, -118.40, 34.10),
+  text = "swimming pool",
+  source = "mapbox",
+  zoom = 18
+)
+
+pools
+```
+
+View results interactively:
+
+``` r
+sam_view(pools)
+```
+
+Extract as sf polygons for analysis:
+
+``` r
+pools_sf <- sam_as_sf(pools)
+```
+
+### Next steps
+
+- [Satellite Imagery Detection](satellite-detection.html) - Full guide to geospatial workflows
+- [Regular Image Detection](image-detection.html) - Working with photos and screenshots
+- [Interactive Workflows](interactive.html) - Using the explore and view interfaces

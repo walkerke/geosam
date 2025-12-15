@@ -6,11 +6,10 @@
 #' @param bbox Bounding box for the area. Can be a numeric vector
 #'   `c(xmin, ymin, xmax, ymax)` in WGS84, or an sf/sfc object.
 #' @param output Path for output GeoTIFF. If NULL, creates a temp file.
-#' @param source Imagery source: "mapbox", "esri", "maptiler", or "google".
+#' @param source Imagery source: "mapbox", "esri", or "maptiler".
 #'   - "mapbox": Requires `MAPBOX_PUBLIC_TOKEN` environment variable
 #'   - "esri": Free Esri World Imagery (no API key required)
 #'   - "maptiler": Requires `MAPTILER_API_KEY` environment variable
-#'   - "google": Google satellite tiles (no API key required)
 #' @param zoom Tile zoom level (15-19). Higher values = more detail.
 #'   Recommended: 17-18 for objects like buildings, swimming pools.
 #' @param api_key API key for the imagery source. For Mapbox, uses
@@ -36,7 +35,7 @@
 get_imagery <- function(
     bbox,
     output = NULL,
-    source = c("mapbox", "esri", "maptiler", "google"),
+    source = c("mapbox", "esri", "maptiler"),
     zoom = 17,
     api_key = NULL
 ) {
@@ -165,10 +164,6 @@ get_imagery <- function(
     maptiler = sprintf(
       "https://api.maptiler.com/tiles/satellite-v2/%d/%d/%d.jpg?key=%s",
       zoom, x, y, api_key
-    ),
-    google = sprintf(
-      "https://mt1.google.com/vt/lyrs=s&x=%d&y=%d&z=%d",
-      x, y, zoom
     )
   )
 }
@@ -407,9 +402,8 @@ geosam_clear_cache <- function() {
     mapbox = "Mapbox",
     esri = "Esri",
     maptiler = "MapTiler",
-    google = "Google",
     source
- )
+  )
 }
 
 
@@ -437,10 +431,6 @@ geosam_clear_cache <- function() {
     maptiler = cli::cli_inform(c(
       "i" = "MapTiler imagery is governed by the MapTiler Terms of Service.",
       " " = "See: {.url https://www.maptiler.com/terms/}"
-    )),
-    google = cli::cli_inform(c(
-      "i" = "Google imagery is governed by the Google Maps Platform Terms of Service.",
-      " " = "See: {.url https://cloud.google.com/maps-platform/terms}"
     ))
   )
 

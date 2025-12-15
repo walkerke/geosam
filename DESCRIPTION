@@ -1,14 +1,15 @@
 Package: geosam
 Title: Geospatial Image Segmentation with SAM3
 Version: 0.1.0
+Date: 2025-12-15
 Authors@R:
     person("Kyle", "Walker", , "kyle@walker-data.com", role = c("aut", "cre"))
 Description: Native R API for geospatial image segmentation using Meta's
     Segment Anything Model 3 (SAM3). Provides tidyverse-friendly interfaces
     for detecting objects in satellite imagery using text prompts, point prompts,
-    box prompts, and exemplar-based detection. Features open-vocabulary object
+    and exemplar-based detection. Features open-vocabulary object
     detection powered by SAM3's text prompting. Built-in support for downloading
-    satellite imagery from Mapbox, ESRI, and other sources.
+    satellite imagery from Mapbox, Esri, and MapTiler.
 License: MIT + file LICENSE
 URL: https://github.com/walkerke/geosam
 BugReports: https://github.com/walkerke/geosam/issues

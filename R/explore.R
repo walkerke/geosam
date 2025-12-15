@@ -374,6 +374,21 @@ sam_explore <- function(
       shiny::div(class = "section-label", "Confidence"),
       shiny::sliderInput("threshold", label = NULL, min = 0.1, max = 0.9, value = 0.5, step = 0.1),
 
+      # Extraction zoom selector
+      shiny::div(class = "section-label", "Extraction Zoom"),
+      shiny::selectInput(
+        "extraction_zoom",
+        label = NULL,
+        choices = c("16 (regional)" = "16", "17 (local)" = "17", "18 (detailed)" = "18"),
+        selected = "17"
+      ),
+      shiny::div(
+        class = "info-row",
+        shiny::span(class = "info-label", "Est. tiles:"),
+        shiny::span(class = "info-value", shiny::textOutput("tile_estimate", inline = TRUE))
+      ),
+      shiny::uiOutput("tile_warning"),
+
       # Detect button
       shiny::actionButton("detect", "Detect in View", class = "btn-primary"),
 
@@ -480,7 +495,7 @@ sam_explore <- function(
 
     # Count displays
     output$n_detections <- shiny::renderText({
-      if (is.null(rv$geosam)) "0" else as.character(length(rv$geosam$masks))
+      if (is.null(rv$geosam)) "0" else as.character(sam_count(rv$geosam))
     })
 
     output$n_points <- shiny::renderText({
@@ -521,24 +536,53 @@ sam_explore <- function(
     })
 
     output$zoom_warning <- shiny::renderUI({
-      z <- input$map_zoom
-      if (is.null(z)) return(NULL)
+      # No zoom restrictions now - we support wide area extraction
+      NULL
+    })
 
-      if (z < 15) {
-        shiny::div(
-          class = "status-box status-error",
-          style = "margin-top: 6px; padding: 6px 8px;",
-          "Zoom in to enable detection (min ~15)"
-        )
-      } else if (z < 17) {
-        shiny::div(
-          class = "status-box status-warning",
-          style = "margin-top: 6px; padding: 6px 8px;",
-          "Will use zoom 17 imagery for best results"
-        )
-      } else {
-        NULL
-      }
+    # Tile count estimate
+    output$tile_estimate <- shiny::renderText({
+      bounds <- input$map_bbox
+      if (is.null(bounds)) return("-")
+
+      ext_zoom <- as.integer(input$extraction_zoom %||% 17)
+      bbox <- c(bounds$xmin, bounds$ymin, bounds$xmax, bounds$ymax)
+
+      tryCatch({
+        dims <- .calc_bbox_pixels(bbox, ext_zoom, source)
+        n_tiles <- dims$n_tiles_x * dims$n_tiles_y
+        format(n_tiles, big.mark = ",")
+      }, error = function(e) "-")
+    })
+
+    # Tile warning
+    output$tile_warning <- shiny::renderUI({
+      bounds <- input$map_bbox
+      if (is.null(bounds)) return(NULL)
+
+      ext_zoom <- as.integer(input$extraction_zoom %||% 17)
+      bbox <- c(bounds$xmin, bounds$ymin, bounds$xmax, bounds$ymax)
+
+      tryCatch({
+        dims <- .calc_bbox_pixels(bbox, ext_zoom, source)
+        n_tiles <- dims$n_tiles_x * dims$n_tiles_y
+
+        if (n_tiles > 500) {
+          shiny::div(
+            class = "status-box status-error",
+            style = "margin-top: 6px; padding: 6px 8px;",
+            "Too many tiles. Zoom in or use lower extraction zoom."
+          )
+        } else if (n_tiles > 200) {
+          shiny::div(
+            class = "status-box status-warning",
+            style = "margin-top: 6px; padding: 6px 8px;",
+            "Large extraction - may take several minutes."
+          )
+        } else {
+          NULL
+        }
+      }, error = function(e) NULL)
     })
 
     # Status display
@@ -618,38 +662,21 @@ sam_explore <- function(
         return()
       }
 
-      # Check zoom level
-      current_zoom <- input$map_zoom %||% 15
-      if (current_zoom < 15) {
-        rv$status <- "Zoom in closer to enable detection."
-        rv$status_type <- "error"
-        return()
-      }
-
-      # Clamp zoom for imagery download (17-18 works best for SAM)
-      imagery_zoom <- max(17, min(18, round(current_zoom)))
-
-      rv$status <- "Downloading imagery..."
-      rv$status_type <- "normal"
-
       bbox <- c(bounds$xmin, bounds$ymin, bounds$xmax, bounds$ymax)
+      ext_zoom <- as.integer(input$extraction_zoom %||% 17)
 
-      img_path <- tryCatch({
-        get_imagery(
-          bbox = bbox,
-          source = source,
-          zoom = imagery_zoom
-        )
-      }, error = function(e) {
-        rv$status <- paste("Imagery error:", e$message)
-        rv$status_type <- "error"
-        NULL
-      })
+      # Check tile count
+      tryCatch({
+        dims <- .calc_bbox_pixels(bbox, ext_zoom, source)
+        n_tiles <- dims$n_tiles_x * dims$n_tiles_y
+        if (n_tiles > 500) {
+          rv$status <- "Area too large. Zoom in or use lower extraction zoom."
+          rv$status_type <- "error"
+          return()
+        }
+      }, error = function(e) NULL)
 
-      if (is.null(img_path)) return()
-      rv$image_path <- img_path
-
-      rv$status <- "Running SAM detection..."
+      rv$status <- "Running detection (this may take a moment)..."
       rv$status_type <- "normal"
 
       # Build prompts based on type
@@ -660,10 +687,14 @@ sam_explore <- function(
             rv$status_type <- "warning"
             return()
           }
+          # Use bbox directly - triggers auto-tiling for large areas
           sam_detect(
-            image = img_path,
+            bbox = bbox,
             text = input$text_prompt,
-            threshold = input$threshold
+            source = source,
+            zoom = ext_zoom,
+            threshold = input$threshold,
+            tiled = TRUE
           )
 
         } else if (input$prompt_type == "exemplar") {
@@ -673,6 +704,10 @@ sam_explore <- function(
             rv$status_type <- "warning"
             return()
           }
+          # Exemplar needs imagery first
+          rv$status <- "Downloading imagery..."
+          img_path <- get_imagery(bbox = bbox, source = source, zoom = ext_zoom)
+          rv$image_path <- img_path
           sam_detect(
             image = img_path,
             exemplar = drawn[1, ],
@@ -685,6 +720,10 @@ sam_explore <- function(
             rv$status_type <- "warning"
             return()
           }
+          # Points need imagery first
+          rv$status <- "Downloading imagery..."
+          img_path <- get_imagery(bbox = bbox, source = source, zoom = ext_zoom)
+          rv$image_path <- img_path
           coords <- do.call(rbind, lapply(rv$points, function(p) c(p$lng, p$lat)))
           labels <- sapply(rv$points, function(p) p$label)
           pts_sf <- sf::st_as_sf(
@@ -733,7 +772,7 @@ sam_explore <- function(
             fill_outline_color = "#eab308"
           )
 
-        rv$status <- sprintf("Found %d object(s).", length(result$masks))
+        rv$status <- sprintf("Found %d object(s).", sam_count(result))
         rv$status_type <- "success"
       } else {
         rv$status <- "No objects detected."

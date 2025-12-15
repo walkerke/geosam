@@ -407,7 +407,7 @@ sam_is_loaded <- function() {
 
   cli::cli_progress_bar(
     total = n_tiles,
-    format = "{cli::pb_spin} Detecting objects [{cli::pb_current}/{cli::pb_total}] {cli::pb_bar} {cli::pb_percent}"
+    format = "Detecting objects [{cli::pb_current}/{cli::pb_total}] {cli::pb_percent}"
   )
 
   for (j in seq_len(tiles_y)) {

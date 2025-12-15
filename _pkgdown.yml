@@ -1,0 +1,88 @@
+url: https://walker-data.com/geosam/
+
+template:
+  bootstrap: 5
+  bootswatch: flatly
+
+navbar:
+  structure:
+    left: [intro, reference, articles]
+    right: [search, github]
+  components:
+    articles:
+      text: Articles
+      menu:
+      - text: Getting Started
+        href: articles/getting-started.html
+      - text: Satellite Imagery Detection
+        href: articles/satellite-detection.html
+      - text: Regular Image Detection
+        href: articles/image-detection.html
+      - text: Interactive Workflows
+        href: articles/interactive.html
+
+reference:
+- title: Detection
+  desc: Core detection functions
+  contents:
+  - sam_detect
+  - sam_image
+  - sam_explore
+  - sam_explore_image
+  - get_imagery
+
+- title: Viewing & Export
+  desc: View results and extract data
+  contents:
+  - sam_view
+  - sam_view_image
+  - plot.geosam
+  - plot.geosam_image
+  - sam_as_sf
+  - sam_as_raster
+  - sam_as_matrix
+  - sam_bbox
+  - sam_scores
+  - sam_count
+
+- title: Refinement
+  desc: Filter and refine detections
+  contents:
+  - sam_filter
+  - sam_select
+  - sam_find_similar
+
+- title: Batch Processing
+  desc: Process multiple inputs
+  contents:
+  - sam_batch
+
+- title: Configuration
+  desc: Setup and configuration
+  contents:
+  - geosam_install
+  - geosam_configure
+  - geosam_status
+  - sam_load
+  - sam_unload
+  - sam_is_loaded
+  - geosam_clear_cache
+
+- title: Class Helpers
+  desc: Object validation
+  contents:
+  - is_geosam
+  - is_geosam_image
+
+articles:
+- title: Getting Started
+  navbar: ~
+  contents:
+  - getting-started
+
+- title: Workflows
+  navbar: ~
+  contents:
+  - satellite-detection
+  - image-detection
+  - interactive

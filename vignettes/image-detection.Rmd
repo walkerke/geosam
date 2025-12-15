@@ -1,0 +1,68 @@
+---
+title: "Regular image detection"
+format: html
+editor: visual
+---
+geosam also works with regular images—photos, screenshots, or any image file. Results are returned in pixel coordinates rather than geographic coordinates.
+
+### Basic detection
+
+Use `sam_image()` for non-georeferenced images:
+
+``` r
+library(geosam)
+
+dogs <- sam_image("photo.jpg", text = "dog")
+dogs
+```
+
+### Viewing results
+
+The `plot()` method overlays detections on the original image:
+
+``` r
+plot(dogs)
+```
+
+Customize colors:
+
+``` r
+plot(dogs, fill = "#3B82F6", border = "#1D4ED8")
+```
+
+<!-- TODO: Screenshot example -->
+
+### Extracting polygons
+
+Convert to sf (coordinates are in pixels):
+
+``` r
+dogs_sf <- sam_as_sf(dogs)
+```
+
+The `area_px` column contains area in square pixels.
+
+### Interactive exploration
+
+Use `sam_explore_image()` for interactive detection on images:
+
+``` r
+result <- sam_explore_image("photo.jpg")
+```
+
+<!-- TODO: Describe the interactive interface -->
+<!-- TODO: Drawing modes: text, points, boxes, exemplar -->
+
+### Prompt modes
+
+<!-- TODO: Cover each prompt type with examples -->
+<!-- - Text prompts -->
+<!-- - Point prompts (click mode) -->
+<!-- - Exemplar mode (draw example) -->
+
+### Use cases
+
+<!-- TODO: Examples of regular image detection -->
+<!-- - Document analysis -->
+<!-- - Photo annotation -->
+<!-- - Screenshot parsing -->

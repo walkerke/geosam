@@ -1,15 +1,15 @@
 # geosam
-
 Geospatial Image Segmentation with Meta's SAM3 in R.
 
 ## Overview
 
-geosam provides a native R interface to Meta's Segment Anything Model 3 (SAM3) for detecting objects in satellite imagery. It supports:
+geosam provides a native R interface to Meta's Segment Anything Model 3 (SAM3) for detecting objects in satellite imagery and photos. It supports:
 
-- **Text prompts**: Describe what you're looking for ("building", "well pad", "solar panel")
-- **Box prompts**: Draw bounding boxes around areas of interest
-- **Point prompts**: Click positive and negative points to guide segmentation
+- **Text prompts**: Describe what you're looking for ("swimming pool", "solar panel", "building")
 - **Exemplar detection**: Draw a box around one example, find all similar objects
+- **Point prompts**: Click positive/negative points to guide segmentation (interactive mode)
+
+Works with both **georeferenced satellite imagery** (returns sf polygons in real-world coordinates) and **regular images** (returns pixel coordinates).
 
 ## Installation
 
@@ -28,83 +28,92 @@ You'll need a HuggingFace account with access to SAM3. Set your token:
 Sys.setenv(HF_TOKEN = "your_huggingface_token")
 ```
 
-## Workflows
+For satellite imagery, set your Mapbox token:
 
-### Programmatic Detection
+```r
+Sys.setenv(MAPBOX_PUBLIC_TOKEN = "your_mapbox_token")
+```
 
-For scripted/batch workflows:
+## Quick Start
+
+### Satellite Imagery Detection
+
 ```r
 library(geosam)
 
-# Download satellite imagery
-img <- get_imagery(
-  bbox = c(-102.5, 31.8, -102.4, 31.9),
+# Detect swimming pools in Beverly Hills
+pools <- sam_detect(
+  bbox = c(-118.42, 34.08, -118.40, 34.10),
+  text = "swimming pool",
   source = "mapbox",
-  zoom = 17
+  zoom = 18
 )
 
-# Detect objects with text prompt
-result <- sam_detect(img, text = "well pad")
+# View results interactively
+sam_view(pools)
 
-# Filter and extract as sf
-wells <- result |>
-  sam_filter(min_area = 500, min_score = 0.7) |>
-  sam_as_sf()
+# Extract as sf polygons
+pools_sf <- sam_as_sf(pools)
+```
+
+For large areas, detection is automatically tiled to maintain accuracy.
+
+### Regular Image Detection
+
+```r
+# Detect objects in a photo
+dogs <- sam_image("photo.jpg", text = "dog")
+
+# View results
+plot(dogs)
+
+# Extract polygons (in pixel coordinates)
+dogs_sf <- sam_as_sf(dogs)
 ```
 
 ### Interactive Discovery
 
 Explore satellite imagery and detect interactively:
+
 ```r
 # Opens interactive map viewer
-result <- sam_explore(source = "mapbox", center = c(-102.5, 31.8), zoom = 15)
+result <- sam_explore(source = "mapbox")
 
-# Navigate, draw prompts, run detection, refine...
+# Navigate, enter text prompts, draw boxes or points...
 # Returns geosam object when done
 
 polygons <- sam_as_sf(result)
 ```
 
-### Interactive Refinement
-
-Start programmatically, refine interactively:
-```r
-# Run initial detection
-result <- sam_detect(img, text = "building")
-
-# Open viewer to add +/- refinement points
-refined <- sam_view(result)
-
-# Extract final polygons
-buildings <- sam_as_sf(refined)
-```
-
 ### Exemplar Workflow
 
 Find all objects similar to one example:
+
 ```r
-# Detect some candidates
-result <- sam_detect(img, text = "cleared area")
+# In sam_explore(), use "Draw Example" mode to
+# draw a box around one object - SAM3 finds all similar objects
+result <- sam_explore(source = "mapbox")
 
-# View results, select the best one, find all similar
-similar <- result |>
-  sam_select(3) |>
-  sam_find_similar()
-
-# Extract
-all_pads <- sam_as_sf(similar)
+# Or programmatically with an sf polygon as exemplar
+similar <- sam_detect(image = "satellite.tif", exemplar = my_example_polygon)
 ```
 
 ## Key Functions
 
-### Entry Points
-- `sam_detect()` - Programmatic detection with text/box/point/exemplar prompts
-- `sam_explore()` - Interactive discovery from satellite map
-- `get_imagery()` - Download satellite imagery tiles
+### Detection
+- `sam_detect()` - Detect objects in georeferenced imagery with text/box/point/exemplar prompts
+- `sam_image()` - Detect objects in regular images (photos, screenshots)
+- `sam_explore()` - Interactive satellite imagery explorer with detection
+- `sam_explore_image()` - Interactive image explorer with detection
+- `get_imagery()` - Download satellite imagery tiles as GeoTIFF
 
-### Extraction
-- `sam_as_sf()` - Extract sf polygons from geosam object
+### Viewing & Export
+- `sam_view()` - Interactive map viewer with confidence filtering
+- `sam_view_image()` - Interactive image viewer
+- `plot()` - Static plotting for geosam objects
+- `sam_as_sf()` - Extract sf polygons
 - `sam_as_raster()` - Extract terra SpatRaster masks
+- `sam_as_matrix()` - Extract raw mask matrices
 - `sam_bbox()` - Get bounding box of detections
 - `sam_scores()` - Get confidence scores
 - `sam_count()` - Get number of detections
@@ -112,9 +121,10 @@ all_pads <- sam_as_sf(similar)
 ### Refinement
 - `sam_filter()` - Filter by area or score
 - `sam_select()` - Select specific detections by index
-- `sam_refine()` - Add refinement points programmatically
 - `sam_find_similar()` - Use one detection as exemplar to find similar
-- `sam_view()` - Interactive refinement viewer
+
+### Batch Processing
+- `sam_batch()` - Process multiple images or bounding boxes
 
 ### Configuration
 - `geosam_install()` - Install Python dependencies
@@ -127,13 +137,17 @@ all_pads <- sam_as_sf(similar)
 | Source | Interactive | Download | API Key Required |
 |--------|-------------|----------|------------------|
 | Mapbox | Yes | Yes | Yes (MAPBOX_PUBLIC_TOKEN) |
-| ESRI | Yes | Yes | No |
-| MapTiler | Yes | Yes | Yes |
-| Google | No | Yes | No |
+| Esri | Yes | Yes | No |
+| MapTiler | Yes | Yes | Yes (MAPTILER_API_KEY) |
 
 ## Requirements
 
-- R >= 4.0
+- R >= 4.1
 - Python >= 3.12
 - HuggingFace account with SAM3 access
 - For interactive features: shiny, mapgl packages
+- For Mapbox imagery: MAPBOX_PUBLIC_TOKEN environment variable
+
+## License
+
+MIT
