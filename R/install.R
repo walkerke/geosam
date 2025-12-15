@@ -130,7 +130,7 @@ geosam_install <- function(
   if (dir.exists(env_path)) {
     cli::cli_alert_warning("Environment already exists at: {env_path}")
     if (interactive()) {
-      response <- readline("Reinstall? (y/n): ")
+      response <- readline("Reinstall? (y/N): ")
       if (tolower(response) != "y") {
         return(TRUE)
       }
@@ -234,7 +234,7 @@ geosam_install <- function(
   if (dir.exists(env_path)) {
     cli::cli_alert_warning("Environment already exists at: {env_path}")
     if (interactive()) {
-      response <- readline("Reinstall? (y/n): ")
+      response <- readline("Reinstall? (y/N): ")
       if (tolower(response) != "y") {
         return(TRUE)
       }
@@ -305,7 +305,7 @@ geosam_install <- function(
   if (envname %in% envs$name) {
     cli::cli_alert_warning("Conda environment '{envname}' already exists.")
     if (interactive()) {
-      response <- readline("Reinstall? (y/n): ")
+      response <- readline("Reinstall? (y/N): ")
       if (tolower(response) != "y") {
         return(TRUE)
       }
