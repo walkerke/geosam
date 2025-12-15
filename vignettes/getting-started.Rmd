@@ -42,20 +42,49 @@ This will set up a Python environment named `geosam` unless you supply an altern
 
 ### Authentication
 
-You'll need a HuggingFace account with access to SAM3 to use geosam.  
-<!-- TODO: Link to HuggingFace SAM3 model page, explain how to get access -->
+geosam uses Meta's SAM3 model hosted on HuggingFace, which requires authentication. You'll need to complete two steps: request access to the model, and set up your access token.
 
-``` r
-Sys.setenv(HF_TOKEN = "your_huggingface_token")
+#### Requesting SAM3 access
+
+First, visit the [SAM3 model page on HuggingFace](https://huggingface.co/facebook/sam3) and click "Request access." You'll need a free HuggingFace account. Access is typically granted quickly, but may take a few hours.
+
+#### Setting up your access token
+
+Once you have access, you'll need a User Access Token. From your HuggingFace account, go to **Settings > Access Tokens** and create a new token. A "read" token is sufficient for geosam since we're only downloading model weights—and read tokens are safer in case your token is accidentally exposed.
+
+The easiest way to authenticate is to save the token on your machine using the HuggingFace CLI. From your terminal:
+
+```bash
+huggingface-cli login
 ```
 
-For satellite imagery via Mapbox:
+This saves your token to `~/.cache/huggingface/token`, where geosam will find it automatically.
+
+Alternatively, you can set the token as an environment variable in R. For persistent use across sessions, add it to your `.Renviron` file:
 
 ``` r
-Sys.setenv(MAPBOX_PUBLIC_TOKEN = "your_mapbox_token")
+# Open your .Renviron file
+usethis::edit_r_environ()
+
+# Add this line:
+# HF_TOKEN=hf_xxxxx
 ```
 
-Alternatively, Esri imagery works without an API key.
+Or set it for a single session:
+
+``` r
+Sys.setenv(HF_TOKEN = "hf_xxxxx")
+```
+
+#### Imagery API keys
+
+For satellite imagery, geosam supports three providers. Mapbox offers high-quality imagery but requires an API key:
+
+``` r
+Sys.setenv(MAPBOX_PUBLIC_TOKEN = "pk.xxxxx")
+```
+
+Esri World Imagery works without any API key, making it a good option for getting started. MapTiler is also supported with the `MAPTILER_API_KEY` environment variable.
 
 ### Check your setup
 
