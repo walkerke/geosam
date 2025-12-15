@@ -178,8 +178,7 @@ geosam_install <- function(
     "pyproj",
     "numpy",
     "pillow",
-    "requests",
-    "segment-geospatial"
+    "requests"
   ))
 
   # Save environment path for later use
@@ -260,10 +259,10 @@ geosam_install <- function(
     pip_options = character()
   )
 
-  cli::cli_alert_info("Installing SAM3...")
+  cli::cli_alert_info("Installing HuggingFace transformers (dev branch for SAM3)...")
   reticulate::virtualenv_install(
     envname = env_path,
-    packages = "git+https://github.com/facebookresearch/sam3.git"
+    packages = c("git+https://github.com/huggingface/transformers.git", "huggingface_hub")
   )
 
   cli::cli_alert_info("Installing geospatial dependencies...")
@@ -332,11 +331,11 @@ geosam_install <- function(
     pip = TRUE
   )
 
-  # Install SAM3
-  cli::cli_alert_info("Installing SAM3...")
+  # Install HuggingFace transformers (dev branch for SAM3)
+  cli::cli_alert_info("Installing HuggingFace transformers...")
   reticulate::conda_install(
     envname = envname,
-    packages = "git+https://github.com/facebookresearch/sam3.git",
+    packages = c("git+https://github.com/huggingface/transformers.git", "huggingface_hub"),
     pip = TRUE
   )
 

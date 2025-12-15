@@ -40,6 +40,15 @@ geosam_install(method = "conda") # or method = "virtualenv"
 
 This will set up a Python environment named `geosam` unless you supply an alternative name to `envname`.
 
+#### Windows prerequisites
+
+On Windows, you'll need a couple of additional tools:
+
+- **Git**: Required to install SAM3 from GitHub. Download from [git-scm.com](https://git-scm.com/download/win) and install with default settings.
+- **Rtools**: Required to compile some R package dependencies. Download from [CRAN](https://cran.r-project.org/bin/windows/Rtools/).
+
+After installing these, restart your R session before running `geosam_install()`.
+
 ### Authentication
 
 geosam uses Meta's SAM3 model hosted on HuggingFace, which requires authentication. You'll need to complete two steps: request access to the model, and set up your access token.
