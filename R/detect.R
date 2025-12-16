@@ -3,7 +3,7 @@
 #' Main function for object detection using Meta's SAM3 model. Supports text
 #' prompts, point prompts, box prompts, and exemplar-based detection.
 #'
-#' For large areas, detection is automatically tiled to maintain accuracy.
+#' For large areas, detection is automatically chunked to maintain accuracy.
 #' This means you can pass a large bounding box (e.g., a census tract) and
 #' get the same detection quality as if you manually checked each viewport.
 #'
@@ -22,11 +22,11 @@
 #' @param zoom Tile zoom level for imagery download (17-19 recommended).
 #' @param threshold Detection confidence threshold (0-1). Lower values return
 #'   more detections.
-#' @param tiled Control automatic tiling for large areas. One of:
+#' @param chunked Control automatic chunking for large areas. One of:
 #'
-#'   - `"auto"` (default): Automatically tile if bbox is large
-#'   - `TRUE`: Force tiled detection
-#'   - `FALSE`: Disable tiling (may reduce accuracy for large areas)
+#'   - `"auto"` (default): Automatically chunk if bbox is large
+#'   - `TRUE`: Force chunked detection
+#'   - `FALSE`: Disable chunking (may reduce accuracy for very large areas)
 #'
 #' @return A `geosam` object containing detection masks and metadata.
 #'   Use `sam_as_sf()` to extract polygons, `sam_filter()` to filter by area/score.
@@ -43,7 +43,7 @@
 #' )
 #' pads <- result |> sam_filter(min_area = 500) |> sam_as_sf()
 #'
-#' # Large area - automatically tiled
+#' # Large area - automatically chunked
 #' result <- sam_detect(
 #'   bbox = c(-118.45, 34.08, -118.40, 34.12),  # ~5km area
 #'   text = "swimming pool",
@@ -79,7 +79,7 @@ sam_detect <- function(
     source = "mapbox",
     zoom = 17,
     threshold = 0.5,
-    tiled = "auto"
+    chunked = "auto"
 ) {
   # Validate inputs
   .ensure_python()
@@ -109,22 +109,22 @@ sam_detect <- function(
     }
   }
 
- # Check if tiled detection should be used
-  # Only applies when: downloading imagery + text prompt + tiled enabled
-  use_tiled <- FALSE
+  # Check if chunked detection should be used
+  # Only applies when: downloading imagery + text prompt + chunked enabled
+  use_chunked <- FALSE
   if (is.null(image) && !is.null(text) && !is.null(bbox)) {
-    if (identical(tiled, TRUE)) {
-      use_tiled <- TRUE
-    } else if (identical(tiled, "auto")) {
-      # Check if bbox is large enough to need tiling
+    if (identical(chunked, TRUE)) {
+      use_chunked <- TRUE
+    } else if (identical(chunked, "auto")) {
+      # Check if bbox is large enough to need chunking
       tile_bboxes <- .split_bbox_for_detection(bbox, zoom, source)
-      use_tiled <- length(tile_bboxes) > 1
+      use_chunked <- length(tile_bboxes) > 1
     }
   }
 
-  # Route to tiled detection if needed
-  if (use_tiled) {
-    return(.sam_detect_tiled(
+  # Route to chunked detection if needed
+  if (use_chunked) {
+    return(.sam_detect_chunked(
       bbox = bbox,
       text = text,
       source = source,
@@ -320,7 +320,7 @@ sam_is_loaded <- function() {
 }
 
 
-#' Tiled detection for large areas
+#' Chunked detection for large areas
 #'
 #' Internal function that downloads imagery once, then runs detection
 #' on image chunks to maintain accuracy for large areas.
@@ -332,11 +332,11 @@ sam_is_loaded <- function() {
 #' @param threshold Detection threshold
 #' @return A geosam object with merged results
 #' @noRd
-.sam_detect_tiled <- function(bbox, text, source, zoom, threshold) {
+.sam_detect_chunked <- function(bbox, text, source, zoom, threshold) {
  .ensure_python()
 
   # Step 1: Download ALL imagery at once
-  cli::cli_alert_info("Downloading imagery for large area...")
+  cli::cli_alert_info("Downloading imagery...")
   image_path <- get_imagery(
     bbox = bbox,
     source = source,
@@ -495,13 +495,13 @@ sam_is_loaded <- function() {
   # Create geosam object - keep the full image for plotting
   result <- new_geosam(
     image_path = image_path,
-    masks = list(),  # Masks not stored for tiled (different sizes per chunk)
+    masks = list(),  # Masks not stored for chunked (different sizes per chunk)
     scores = combined_sf$score,
     prompt = list(type = "text", value = text),
     extent = as.vector(terra::ext(img_rast)),
     crs = terra::crs(img_rast, proj = TRUE),
     history = list(list(
-      action = "tiled_detection",
+      action = "chunked_detection",
       n_tiles = n_tiles,
       grid = c(tiles_x, tiles_y)
     ))

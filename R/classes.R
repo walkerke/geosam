@@ -45,9 +45,9 @@ new_geosam <- function(
 #' @return Invisibly returns `x`.
 #' @export
 print.geosam <- function(x, ...) {
-  # Handle tiled results
-  is_tiled <- !is.null(x$sf_result)
-  n_detections <- if (is_tiled) nrow(x$sf_result) else length(x$masks)
+  # Handle chunked results
+  is_chunked <- !is.null(x$sf_result)
+  n_detections <- if (is_chunked) nrow(x$sf_result) else length(x$masks)
 
   cli::cli_text("{.cls geosam} object")
   cli::cli_text("
@@ -64,14 +64,14 @@ print.geosam <- function(x, ...) {
     cli::cli_text("  Prompt: {prompt_desc}")
   }
 
-  if (is_tiled) {
-    # Show tiled detection info
+  if (is_chunked) {
+    # Show chunked detection info
     if (length(x$history) > 0 && !is.null(x$history[[1]]$n_tiles)) {
       grid <- x$history[[1]]$grid
-      n_tiles <- x$history[[1]]$n_tiles
-      cli::cli_text("  Mode: tiled ({grid[1]}x{grid[2]} = {n_tiles} tiles)")
+      n_chunks <- x$history[[1]]$n_tiles
+      cli::cli_text("  Mode: chunked ({grid[1]}x{grid[2]} = {n_chunks} chunks)")
     } else {
-      cli::cli_text("  Mode: tiled")
+      cli::cli_text("  Mode: chunked")
     }
   } else if (length(x$image_path) > 0 && nchar(x$image_path) > 0) {
     cli::cli_text("  Image: {basename(x$image_path)}")

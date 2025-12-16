@@ -343,7 +343,7 @@ sam_view <- function(
     initial_sf <- sam_as_sf(initial_geosam)
     shiny::removeNotification("loading")
 
-    # Get count (works for both tiled and non-tiled)
+    # Get count (works for both chunked and non-chunked)
     n_detect <- sam_count(initial_geosam)
     rv$n_visible <- n_detect
 

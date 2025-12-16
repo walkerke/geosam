@@ -35,9 +35,9 @@ sam_as_sf <- function(x, min_area = NULL, max_area = NULL) {
     return(.sam_as_sf_image(x, min_area, max_area))
   }
 
-  # Check for pre-computed sf (from tiled detection) BEFORE validation
+  # Check for pre-computed sf (from chunked detection) BEFORE validation
 
-  # Tiled detection doesn't store masks (different sizes per chunk)
+  # Chunked detection doesn't store masks (different sizes per chunk)
   if (!is.null(x$sf_result)) {
     result <- x$sf_result
 
@@ -281,7 +281,7 @@ sam_count <- function(x) {
     cli::cli_abort("{.arg x} must be a {.cls geosam} or {.cls geosam_image} object.")
   }
 
-  # For tiled results, count from pre-computed sf
+  # For chunked results, count from pre-computed sf
   if (!is.null(x$sf_result)) {
     return(nrow(x$sf_result))
   }

@@ -54,12 +54,16 @@ buildings_sf <- sam_as_sf(buildings)
 mapboxgl_view(buildings_sf, style = mapbox_style("satellite"))
 
 # 7. Get imagery separately, then detect
+bg <- tigris::block_groups("TX", "Tarrant", cb = TRUE)
+
+bg_tcu <- bg[bg$GEOID == 484391042031, ]
+
 img <- get_imagery(
-  bbox = c(-102.08, 31.95, -102.05, 31.98),
+  bbox = bg_tcu,
   source = "mapbox",
   zoom = 17
 )
-result2 <- sam_detect(image = img, text = "well pad")
+result2 <- sam_detect(image = img, text = "football stadium")
 
 # 8. Check scores
 sam_scores(result)

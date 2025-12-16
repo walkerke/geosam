@@ -687,14 +687,14 @@ sam_explore <- function(
             rv$status_type <- "warning"
             return()
           }
-          # Use bbox directly - triggers auto-tiling for large areas
+          # Use bbox directly - triggers auto-chunking for large areas
           sam_detect(
             bbox = bbox,
             text = input$text_prompt,
             source = source,
             zoom = ext_zoom,
             threshold = input$threshold,
-            tiled = TRUE
+            chunked = TRUE
           )
 
         } else if (input$prompt_type == "exemplar") {

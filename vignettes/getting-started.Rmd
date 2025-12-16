@@ -97,40 +97,54 @@ Esri World Imagery works without any API key, making it a good option for gettin
 
 ### Check your setup
 
-Verify everything is working:
+Before running your first detection, verify that everything is configured correctly:
 
 ``` r
 geosam_status()
 ```
 
+This will show you the status of your Python environment, whether GPU acceleration is available (MPS on Apple Silicon, CUDA on NVIDIA), and whether your HuggingFace token is configured. If everything shows green checkmarks, you're ready to go.
+
 ### Your first detection
 
-Let's detect swimming pools in a neighborhood:
+Let's detect the football stadium on the TCU campus in Fort Worth. The `sam_detect()` function is the main workhorse for satellite imagery detection. You provide a bounding box, describe what you're looking for with a text prompt, and geosam handles the rest—downloading imagery, running SAM3 inference, and returning georeferenced results.
 
 ``` r
 library(geosam)
 
-pools <- sam_detect(
-  bbox = c(-118.42, 34.08, -118.40, 34.10),
-  text = "swimming pool",
+field <- sam_detect(
+  bbox = c(-97.372, 32.707, -97.366, 32.712),
+  text = "football field",
   source = "mapbox",
-  zoom = 18
+  zoom = 17
 )
 
-pools
+field
 ```
 
-View results interactively:
+The `bbox` argument takes coordinates in WGS84 (longitude/latitude) as `c(xmin, ymin, xmax, ymax)`. You can also pass an sf object and geosam will extract its bounding box automatically.
+
+The first time you run a detection, SAM3 will download model weights from HuggingFace (about 2.5 GB). This only happens once as subsequent runs use the cached model.
+
+### Viewing results
+
+Use `sam_view()` to explore your detections interactively:
 
 ``` r
-sam_view(pools)
+sam_view(stadium)
 ```
 
-Extract as sf polygons for analysis:
+This opens a Shiny application with the satellite imagery as a basemap and your detections overlaid as polygons. You can adjust the confidence threshold with a slider to filter out lower-quality detections, and click on individual polygons to see their confidence scores.
+
+### Extracting polygons
+
+When you're ready to work with the results in R, extract them as an sf object:
 
 ``` r
-pools_sf <- sam_as_sf(pools)
+stadium_sf <- sam_as_sf(stadium)
 ```
+
+The resulting sf object includes a `score` column with confidence values (0–1) and an `area_m2` column with the area of each detection in square meters. From here, you can filter, analyze, or export your detections using standard sf workflows.
 
 ### Next steps
 

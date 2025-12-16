@@ -326,13 +326,13 @@ get_imagery <- function(
 #' @param bbox Numeric vector c(west, south, east, north)
 #' @param zoom Zoom level
 #' @param source Imagery source
-#' @param max_pixels Maximum pixels in either dimension before tiling (default 1500)
-#' @return List of bbox vectors, or original bbox if no tiling needed
+#' @param max_pixels Maximum pixels in either dimension before chunking (default 2500)
+#' @return List of bbox vectors, or original bbox if no chunking needed
 #' @noRd
-.split_bbox_for_detection <- function(bbox, zoom, source = "mapbox", max_pixels = 1500) {
+.split_bbox_for_detection <- function(bbox, zoom, source = "mapbox", max_pixels = 2500) {
   dims <- .calc_bbox_pixels(bbox, zoom, source)
 
-  # Check if tiling is needed
+  # Check if chunking is needed
   if (dims$width <= max_pixels && dims$height <= max_pixels) {
     return(list(bbox))
   }

@@ -15,7 +15,7 @@ sam_detect(
   source = "mapbox",
   zoom = 17,
   threshold = 0.5,
-  tiled = "auto"
+  chunked = "auto"
 )
 }
 \arguments{
@@ -44,11 +44,11 @@ all similar objects in the image.}
 \item{threshold}{Detection confidence threshold (0-1). Lower values return
 more detections.}
 
-\item{tiled}{Control automatic tiling for large areas. One of:
+\item{chunked}{Control automatic chunking for large areas. One of:
 \itemize{
-\item \code{"auto"} (default): Automatically tile if bbox is large
-\item \code{TRUE}: Force tiled detection
-\item \code{FALSE}: Disable tiling (may reduce accuracy for large areas)
+\item \code{"auto"} (default): Automatically chunk if bbox is large
+\item \code{TRUE}: Force chunked detection
+\item \code{FALSE}: Disable chunking (may reduce accuracy for very large areas)
 }}
 }
 \value{
@@ -61,7 +61,7 @@ Main function for object detection using Meta's SAM3 model. Supports text
 prompts, point prompts, box prompts, and exemplar-based detection.
 }
 \details{
-For large areas, detection is automatically tiled to maintain accuracy.
+For large areas, detection is automatically chunked to maintain accuracy.
 This means you can pass a large bounding box (e.g., a census tract) and
 get the same detection quality as if you manually checked each viewport.
 }
@@ -74,7 +74,7 @@ result <- sam_detect(
 )
 pads <- result |> sam_filter(min_area = 500) |> sam_as_sf()
 
-# Large area - automatically tiled
+# Large area - automatically chunked
 result <- sam_detect(
   bbox = c(-118.45, 34.08, -118.40, 34.12),  # ~5km area
   text = "swimming pool",

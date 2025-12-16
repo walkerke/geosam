@@ -44,7 +44,14 @@ This function installs:
 
 \strong{uv (recommended)}: Fast, modern Python package manager. Install uv first:
 
-\if{html}{\out{<div class="sourceCode">}}\preformatted{curl -LsSf https://astral.sh/uv/install.sh | sh
+\if{html}{\out{<div class="sourceCode">}}\preformatted{# macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Or via pip (any platform)
+pip install uv
 }\if{html}{\out{</div>}}
 
 \strong{virtualenv}: Uses Python's built-in venv via reticulate. Requires Python 3.12+
