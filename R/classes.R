@@ -9,6 +9,7 @@
 #' @param prompt List with `type` and `value` describing the prompt used.
 #' @param extent Numeric vector of length 4: c(xmin, ymin, xmax, ymax).
 #' @param crs CRS string (typically "EPSG:3857").
+#' @param source Imagery source used ("mapbox", "esri", "maptiler", or NULL).
 #' @param history List tracking refinement steps.
 #'
 #' @return A geosam object.
@@ -20,6 +21,7 @@ new_geosam <- function(
     prompt = list(),
     extent = numeric(4),
     crs = character(),
+    source = NULL,
     history = list()
 ) {
   structure(
@@ -30,6 +32,7 @@ new_geosam <- function(
       prompt = prompt,
       extent = extent,
       crs = crs,
+      source = source,
       history = history
     ),
     class = "geosam"

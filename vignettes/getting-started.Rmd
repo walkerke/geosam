@@ -107,7 +107,7 @@ This will show you the status of your Python environment, whether GPU accelerati
 
 ### Your first detection
 
-Let's detect the football stadium on the TCU campus in Fort Worth. The `sam_detect()` function is the main workhorse for satellite imagery detection. You provide a bounding box, describe what you're looking for with a text prompt, and geosam handles the rest—downloading imagery, running SAM3 inference, and returning georeferenced results.
+Let's detect football fields on the TCU campus in Fort Worth. The `sam_detect()` function is the main workhorse for satellite imagery detection. You provide a bounding box, describe what you're looking for with a text prompt, and geosam handles the rest—downloading imagery, running SAM3 inference, and returning georeferenced results.
 
 ``` r
 library(geosam)
@@ -131,10 +131,12 @@ The first time you run a detection, SAM3 will download model weights from Huggin
 Use `sam_view()` to explore your detections interactively:
 
 ``` r
-sam_view(stadium)
+sam_view(field)
 ```
 
-This opens a Shiny application with the satellite imagery as a basemap and your detections overlaid as polygons. You can adjust the confidence threshold with a slider to filter out lower-quality detections, and click on individual polygons to see their confidence scores.
+This opens a Shiny application with the satellite imagery as a basemap and your detections overlaid as polygons. You can adjust the confidence threshold with a slider to filter out lower-quality detections, and click on individual polygons to see their confidence scores.  Here, we've picked up the field inside the football stadium as well as the nearby practice field.
+
+Zoom out a bit for this view - you'll see a white box representing the extraction area.  This is the area that we searched for features matching the text prompt.
 
 ### Extracting polygons
 

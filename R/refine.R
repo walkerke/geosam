@@ -41,6 +41,7 @@ sam_filter <- function(x, min_area = NULL, max_area = NULL, min_score = NULL) {
         prompt = x$prompt,
         extent = x$extent,
         crs = x$crs,
+        source = x$source,
         history = c(x$history, list(list(action = "filter", kept = 0)))
       ))
     }
@@ -71,6 +72,7 @@ sam_filter <- function(x, min_area = NULL, max_area = NULL, min_score = NULL) {
     prompt = x$prompt,
     extent = x$extent,
     crs = x$crs,
+    source = x$source,
     history = c(x$history, list(list(
       action = "filter",
       min_area = min_area,
@@ -119,6 +121,7 @@ sam_select <- function(x, index) {
     prompt = x$prompt,
     extent = x$extent,
     crs = x$crs,
+    source = x$source,
     history = c(x$history, list(list(action = "select", index = index)))
   )
 }
@@ -203,6 +206,7 @@ sam_refine <- function(x, points, labels = NULL) {
     prompt = list(type = "points", value = points, labels = labels),
     extent = x$extent,
     crs = x$crs,
+    source = x$source,
     history = c(x$history, list(list(action = "refine", n_points = nrow(points))))
   )
 }
@@ -282,6 +286,7 @@ sam_find_similar <- function(x) {
     prompt = list(type = "exemplar", value = sf_mask),
     extent = x$extent,
     crs = x$crs,
+    source = x$source,
     history = c(x$history, list(list(action = "find_similar")))
   )
 }

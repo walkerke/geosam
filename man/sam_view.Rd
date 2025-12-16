@@ -9,7 +9,7 @@ sam_view(
   fill = "#FACC15",
   border = "#EAB308",
   fill_opacity = 0.5,
-  source = c("mapbox", "esri", "maptiler")
+  source = NULL
 )
 }
 \arguments{
@@ -22,8 +22,8 @@ sam_view(
 \item{fill_opacity}{Fill opacity for detection polygons (0-1). Default is 0.5.}
 
 \item{source}{Imagery source for basemap: "mapbox", "esri", or "maptiler".
-Defaults to "mapbox" but falls back to "esri" if MAPBOX_PUBLIC_TOKEN
-is not set. Esri is free and requires no API key.}
+If NULL (default), uses the source from the geosam object if available,
+otherwise falls back to "mapbox" or "esri" if no API key is set.}
 }
 \value{
 The geosam object when the user clicks "Done".

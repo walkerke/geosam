@@ -134,12 +134,15 @@ sam_detect <- function(
   }
 
   # Download imagery if needed (single tile path)
+  # Track source for later use in sam_view()
+  used_source <- NULL
   if (is.null(image)) {
     image <- get_imagery(
       bbox = bbox,
       source = source,
       zoom = zoom
     )
+    used_source <- source
   }
 
   # Verify image exists
@@ -238,6 +241,7 @@ sam_detect <- function(
     prompt = prompt_info,
     extent = img_extent,
     crs = img_crs,
+    source = used_source,
     history = list()
   )
 }
@@ -382,6 +386,7 @@ sam_is_loaded <- function() {
       prompt = list(type = "text", value = text),
       extent = as.vector(terra::ext(img_rast)),
       crs = terra::crs(img_rast, proj = TRUE),
+      source = source,
       history = list()
     ))
   }
@@ -500,6 +505,7 @@ sam_is_loaded <- function() {
     prompt = list(type = "text", value = text),
     extent = as.vector(terra::ext(img_rast)),
     crs = terra::crs(img_rast, proj = TRUE),
+    source = source,
     history = list(list(
       action = "chunked_detection",
       n_tiles = n_tiles,

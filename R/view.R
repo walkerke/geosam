@@ -7,8 +7,8 @@
 #' @param border Border/outline color for polygons. Default is "#EAB308".
 #' @param fill_opacity Fill opacity for detection polygons (0-1). Default is 0.5.
 #' @param source Imagery source for basemap: "mapbox", "esri", or "maptiler".
-#'   Defaults to "mapbox" but falls back to "esri" if MAPBOX_PUBLIC_TOKEN
-#'   is not set. Esri is free and requires no API key.
+#'   If NULL (default), uses the source from the geosam object if available,
+#'   otherwise falls back to "mapbox" or "esri" if no API key is set.
 #'
 #' @return The geosam object when the user clicks "Done".
 #'
@@ -33,7 +33,7 @@ sam_view <- function(
   fill = "#FACC15",
   border = "#EAB308",
   fill_opacity = 0.5,
-  source = c("mapbox", "esri", "maptiler")
+  source = NULL
 ) {
   if (!inherits(x, "geosam")) {
     cli::cli_abort("{.arg x} must be a {.cls geosam} object.")
@@ -42,7 +42,13 @@ sam_view <- function(
     c("shiny", "mapgl"),
     reason = "for interactive refinement"
   )
-  source <- match.arg(source)
+
+  # Use source from geosam object if available, otherwise default to mapbox
+
+  if (is.null(source)) {
+    source <- if (!is.null(x$source)) x$source else "mapbox"
+  }
+  source <- match.arg(source, c("mapbox", "esri", "maptiler"))
 
   # Check for required API keys and fall back to Esri if missing
   source <- .resolve_map_source(source)
