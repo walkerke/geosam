@@ -143,7 +143,7 @@ Zoom out a bit for this view - you'll see a white box representing the extractio
 When you're ready to work with the results in R, extract them as an sf object:
 
 ``` r
-stadium_sf <- sam_as_sf(stadium)
+field_sf <- sam_as_sf(field)
 ```
 
 The resulting sf object includes a `score` column with confidence values (0–1) and an `area_m2` column with the area of each detection in square meters. From here, you can filter, analyze, or export your detections using standard sf workflows.
