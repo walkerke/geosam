@@ -182,6 +182,13 @@ sam_as_raster <- function(x, combined = FALSE) {
   validate_geosam(x)
 
   if (length(x$masks) == 0) {
+    if (!is.null(x$sf_result)) {
+      cli::cli_abort(c(
+        "Raster masks are not available for chunked detection results.",
+        "i" = "Use {.fn sam_as_sf} to get polygon geometries instead.",
+        "i" = "Or re-run detection with {.code chunked = FALSE} to get raster masks."
+      ))
+    }
     cli::cli_alert_warning("No masks to convert.")
     return(NULL)
   }
@@ -312,6 +319,13 @@ sam_as_matrix <- function(x) {
   }
 
   if (length(x$masks) == 0) {
+    if (!is.null(x$sf_result)) {
+      cli::cli_abort(c(
+        "Mask matrices are not available for chunked detection results.",
+        "i" = "Use {.fn sam_as_sf} to get polygon geometries instead.",
+        "i" = "Or re-run detection with {.code chunked = FALSE} to get mask matrices."
+      ))
+    }
     cli::cli_alert_warning("No masks to extract.")
     return(list())
   }

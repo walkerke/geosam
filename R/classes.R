@@ -112,11 +112,15 @@ is_geosam <- function(x) {
 #' @return The validated geosam object (invisibly).
 #' @noRd
 validate_geosam <- function(x) {
+
   if (!inherits(x, "geosam")) {
     cli::cli_abort("{.arg x} must be a {.cls geosam} object.")
   }
 
-  if (length(x$masks) != length(x$scores)) {
+  # For chunked detection, sf_result is used instead of masks
+ is_chunked <- !is.null(x$sf_result)
+
+  if (!is_chunked && length(x$masks) != length(x$scores)) {
     cli::cli_abort("Number of masks ({length(x$masks)}) must equal number of scores ({length(x$scores)}).")
   }
 

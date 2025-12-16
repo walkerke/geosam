@@ -347,6 +347,7 @@ sam_view <- function(
       duration = NULL
     )
     initial_sf <- sam_as_sf(initial_geosam)
+    initial_sf$index <- seq_len(nrow(initial_sf))
     shiny::removeNotification("loading")
 
     # Get count (works for both chunked and non-chunked)
@@ -395,7 +396,9 @@ sam_view <- function(
             fill_opacity = fill_opacity,
             fill_outline_color = border,
             popup = mapgl::concat(
-              "Confidence: ",
+              "Index: ",
+              mapgl::get_column("index"),
+              "<br>Confidence: ",
               mapgl::number_format(
                 mapgl::get_column("score"),
                 maximum_fraction_digits = 2
