@@ -593,11 +593,17 @@ sam_explore <- function(
       do.call(shiny::tagList, rows)
     })
 
-    # Add prompt button
+    # Add prompt button - preserve existing text values
     shiny::observeEvent(input$add_prompt, {
       if (length(rv$prompts) < 6) {
-        new_color <- prompt_colors[min(length(rv$prompts) + 1, length(prompt_colors))]
-        rv$prompts <- c(rv$prompts, list(list(
+        # Capture current text values before modifying
+        current_prompts <- lapply(rv$prompts, function(p) {
+          input_id <- paste0("prompt_text_", p$id)
+          text <- input[[input_id]]
+          list(id = p$id, text = if (is.null(text)) "" else text, color = p$color)
+        })
+        new_color <- prompt_colors[min(length(current_prompts) + 1, length(prompt_colors))]
+        rv$prompts <- c(current_prompts, list(list(
           id = rv$next_prompt_id,
           text = "",
           color = new_color
@@ -606,29 +612,31 @@ sam_explore <- function(
       }
     })
 
-    # Remove prompt observers
+    # Remove prompt observers - preserve text values for remaining prompts
     shiny::observe({
       prompts <- rv$prompts
       lapply(prompts, function(p) {
         btn_id <- paste0("remove_prompt_", p$id)
         shiny::observeEvent(input[[btn_id]], {
-          rv$prompts <- Filter(function(x) x$id != p$id, rv$prompts)
+          # Capture current text values before removing
+          current_prompts <- lapply(rv$prompts, function(pr) {
+            input_id <- paste0("prompt_text_", pr$id)
+            text <- input[[input_id]]
+            list(id = pr$id, text = if (is.null(text)) "" else text, color = pr$color)
+          })
+          rv$prompts <- Filter(function(x) x$id != p$id, current_prompts)
         }, ignoreInit = TRUE, once = TRUE)
       })
     })
 
-    # Update prompt text when inputs change
-    shiny::observe({
-      prompts <- rv$prompts
-      for (i in seq_along(prompts)) {
-        p <- prompts[[i]]
+    # Helper to get current prompt texts from inputs (avoids re-render issues)
+    get_prompt_texts <- function() {
+      lapply(rv$prompts, function(p) {
         input_id <- paste0("prompt_text_", p$id)
-        new_text <- input[[input_id]]
-        if (!is.null(new_text) && new_text != p$text) {
-          rv$prompts[[i]]$text <- new_text
-        }
-      }
-    })
+        text <- input[[input_id]]
+        list(id = p$id, text = if (is.null(text)) "" else text, color = p$color)
+      })
+    }
 
     # Count displays
     output$n_detections <- shiny::renderText({
@@ -790,7 +798,8 @@ sam_explore <- function(
       rv$geosam <- NULL
       tryCatch({
         get_proxy() |>
-          mapgl::clear_layer("detections")
+          mapgl::clear_layer("detections") |>
+          mapgl::clear_legend()
       }, error = function(e) NULL)
       rv$status <- "Results cleared."
       rv$status_type <- "normal"
@@ -829,8 +838,8 @@ sam_explore <- function(
       # Build prompts based on type
       result <- tryCatch({
         if (input$prompt_type == "text") {
-          # Get all prompts with non-empty text
-          active_prompts <- Filter(function(p) nchar(p$text) > 0, rv$prompts)
+          # Get all prompts with non-empty text (read directly from inputs)
+          active_prompts <- Filter(function(p) nchar(p$text) > 0, get_prompt_texts())
           if (length(active_prompts) == 0) {
             rv$status <- "Enter at least one text description."
             rv$status_type <- "warning"

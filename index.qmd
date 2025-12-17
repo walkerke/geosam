@@ -1,0 +1,86 @@
+---
+title: "geosam"
+subtitle: "Geospatial Image Segmentation with SAM3 in R"
+format:
+  html:
+    toc: false
+---
+
+**geosam** brings Meta's Segment Anything Model 3 (SAM3) to R for detecting objects in satellite imagery and photos. Describe what you're looking for in plain text—no training data or model fine-tuning required.
+
+The package provides a native R interface that integrates with terra for spatial workflows, sf for vector data, and mapgl for interactive visualization. Whether you're counting swimming pools from satellite imagery or extracting objects from photos, geosam handles the complexity of running SAM3 and returns familiar R objects.
+
+## Installation
+
+Install the development version from GitHub:
+
+```r
+remotes::install_github("walkerke/geosam")
+```
+
+Then set up the Python environment:
+
+```r
+library(geosam)
+geosam_install()
+```
+
+You'll need a [HuggingFace account](https://huggingface.co/) with access to the [SAM3 model](https://huggingface.co/facebook/sam3).
+
+## Getting started
+
+```r
+library(geosam)
+
+# Detect swimming pools in Beverly Hills
+pools <- sam_detect(
+
+  bbox = c(-118.41, 34.09, -118.405, 34.095),
+  text = "swimming pool",
+  source = "mapbox",
+  zoom = 18
+)
+
+# View interactively
+sam_view(pools)
+
+# Extract as sf polygons
+pools_sf <- sam_as_sf(pools)
+```
+
+## Learn more
+
+:::: {.grid}
+
+::: {.g-col-6}
+### [Getting started](articles/getting-started.html)
+Installation, authentication, and your first detection.
+:::
+
+::: {.g-col-6}
+### [Satellite detection](articles/satellite-detection.html)
+Working with georeferenced imagery and extracting results.
+:::
+
+::: {.g-col-6}
+### [Image detection](articles/image-detection.html)
+Detecting objects in photos, screenshots, and other images.
+:::
+
+::: {.g-col-6}
+### [Interactive workflows](articles/interactive.html)
+Using the explore and view interfaces for discovery.
+:::
+
+::::
+
+## Support
+
+If you find geosam useful, consider:
+
+- Reporting issues or contributing on [GitHub](https://github.com/walkerke/geosam)
+- Citing the package in your work
+- Attending one of Kyle's [workshops on R and spatial data](https://walker-data.com/workshops)
+
+## License
+geosam is licensed under the MIT license.
