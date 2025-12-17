@@ -233,20 +233,16 @@ sam_explore <- function(
 
         /* Radio button styling */
         .control-panel .shiny-input-radiogroup {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 4px;
           margin-bottom: 8px;
         }
 
         .control-panel .radio-inline {
           font-size: 11px;
-          padding: 6px 10px;
-          margin: 0;
+          padding: 5px 8px;
+          margin: 0 2px 0 0;
           border: 1px solid #ddd;
           border-radius: 4px;
           cursor: pointer;
-          white-space: nowrap;
         }
 
         .control-panel .radio-inline input { display: none; }
@@ -295,10 +291,81 @@ sam_explore <- function(
         .point-badge.positive { background: #dcfce7; color: #16a34a; }
         .point-badge.negative { background: #fee2e2; color: #dc2626; }
 
-        /* Slider styling */
+        /* Multi-prompt styling */
+        .prompt-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-bottom: 6px;
+        }
+        .prompt-row input[type='text'] {
+          flex: 1;
+          margin-bottom: 0 !important;
+        }
+        .prompt-color {
+          width: 16px;
+          height: 16px;
+          border-radius: 3px;
+          flex-shrink: 0;
+        }
+        .prompt-remove {
+          background: none;
+          border: none;
+          color: #999;
+          cursor: pointer;
+          padding: 2px 6px;
+          font-size: 14px;
+        }
+        .prompt-remove:hover { color: #dc2626; }
+        .btn-add-prompt {
+          font-size: 11px;
+          padding: 4px 8px;
+          background: #f5f5f5;
+          border: 1px dashed #ccc;
+          border-radius: 4px;
+          cursor: pointer;
+          color: #666;
+        }
+        .btn-add-prompt:hover { background: #eee; border-color: #999; }
+
+        /* Slider styling - cleaner look */
         .control-panel .irs--shiny .irs-bar { background: #154733; border-top-color: #154733; border-bottom-color: #154733; }
         .control-panel .irs--shiny .irs-single { background: #154733; }
         .control-panel .irs--shiny .irs-handle { border-color: #154733; }
+        .control-panel .irs--shiny .irs-min,
+        .control-panel .irs--shiny .irs-max { display: none; }
+        .control-panel .shiny-input-container { margin-bottom: 0; }
+
+        /* Loading spinner - satellite/radar style */
+        .spinner {
+          display: inline-block;
+          width: 16px;
+          height: 16px;
+          border: 2px solid rgba(255,255,255,0.3);
+          border-radius: 50%;
+          border-top-color: white;
+          border-right-color: white;
+          animation: spin 0.6s linear infinite;
+          margin-right: 8px;
+          vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .btn-primary.detecting {
+          pointer-events: none;
+          background: #1a5c42;
+        }
+      ")),
+      shiny::tags$script(shiny::HTML("
+        Shiny.addCustomMessageHandler('setDetecting', function(detecting) {
+          var btn = document.getElementById('detect');
+          if (detecting) {
+            btn.innerHTML = '<span class=\"spinner\"></span> Detecting...';
+            btn.classList.add('detecting');
+          } else {
+            btn.innerHTML = 'Detect in View';
+            btn.classList.remove('detecting');
+          }
+        });
       "))
     ),
 
@@ -331,7 +398,7 @@ sam_explore <- function(
       shiny::radioButtons(
         "prompt_type",
         label = NULL,
-        choices = c("Text Prompt" = "text", "Draw Example" = "exemplar", "Click Points" = "points"),
+        choices = c("Text" = "text", "Example" = "exemplar", "Points" = "points"),
         selected = "text",
         inline = TRUE
       ),
@@ -339,8 +406,9 @@ sam_explore <- function(
       # Text mode panel
       shiny::conditionalPanel(
         condition = "input.prompt_type == 'text'",
-        shiny::p(class = "help-text", "Describe objects to find in the current view."),
-        shiny::textInput("text_prompt", label = NULL, placeholder = "e.g., building, swimming pool, solar panel")
+        shiny::p(class = "help-text", "Describe objects to find. Add multiple prompts for different object types."),
+        shiny::uiOutput("prompt_rows_ui"),
+        shiny::actionButton("add_prompt", "+ Add prompt", class = "btn-add-prompt")
       ),
 
       # Exemplar mode panel
@@ -416,6 +484,9 @@ sam_explore <- function(
 #' @noRd
 .explore_server <- function(source, initial_center, initial_zoom) {
   function(input, output, session) {
+    # Color palette for prompts
+    prompt_colors <- c("#facc15", "#3b82f6", "#ef4444", "#22c55e", "#a855f7", "#f97316")
+
     # Reactive values
     rv <- shiny::reactiveValues(
       geosam = NULL,
@@ -423,7 +494,10 @@ sam_explore <- function(
       drawn_bbox = NULL,
       image_path = NULL,
       status = "Navigate to an area and click 'Detect in View'.",
-      status_type = "normal"
+      status_type = "normal",
+      prompts = list(list(id = 1, text = "", color = "#facc15")),
+      next_prompt_id = 2,
+      detecting = FALSE
     )
 
     # Helper to get correct proxy based on source
@@ -493,9 +567,79 @@ sam_explore <- function(
         )
     }) |> shiny::bindEvent(input$map_bbox, once = TRUE)
 
+    # Render prompt rows UI
+    output$prompt_rows_ui <- shiny::renderUI({
+      prompts <- rv$prompts
+      rows <- lapply(seq_along(prompts), function(i) {
+        p <- prompts[[i]]
+        shiny::div(
+          class = "prompt-row",
+          shiny::div(class = "prompt-color", style = sprintf("background: %s;", p$color)),
+          shiny::textInput(
+            inputId = paste0("prompt_text_", p$id),
+            label = NULL,
+            value = p$text,
+            placeholder = if (i == 1) "e.g., swimming pool" else "another object type"
+          ),
+          if (length(prompts) > 1) {
+            shiny::actionButton(
+              paste0("remove_prompt_", p$id),
+              "\u00d7",
+              class = "prompt-remove"
+            )
+          }
+        )
+      })
+      do.call(shiny::tagList, rows)
+    })
+
+    # Add prompt button
+    shiny::observeEvent(input$add_prompt, {
+      if (length(rv$prompts) < 6) {
+        new_color <- prompt_colors[min(length(rv$prompts) + 1, length(prompt_colors))]
+        rv$prompts <- c(rv$prompts, list(list(
+          id = rv$next_prompt_id,
+          text = "",
+          color = new_color
+        )))
+        rv$next_prompt_id <- rv$next_prompt_id + 1
+      }
+    })
+
+    # Remove prompt observers
+    shiny::observe({
+      prompts <- rv$prompts
+      lapply(prompts, function(p) {
+        btn_id <- paste0("remove_prompt_", p$id)
+        shiny::observeEvent(input[[btn_id]], {
+          rv$prompts <- Filter(function(x) x$id != p$id, rv$prompts)
+        }, ignoreInit = TRUE, once = TRUE)
+      })
+    })
+
+    # Update prompt text when inputs change
+    shiny::observe({
+      prompts <- rv$prompts
+      for (i in seq_along(prompts)) {
+        p <- prompts[[i]]
+        input_id <- paste0("prompt_text_", p$id)
+        new_text <- input[[input_id]]
+        if (!is.null(new_text) && new_text != p$text) {
+          rv$prompts[[i]]$text <- new_text
+        }
+      }
+    })
+
     # Count displays
     output$n_detections <- shiny::renderText({
-      if (is.null(rv$geosam)) "0" else as.character(sam_count(rv$geosam))
+      result <- rv$geosam
+      if (is.null(result)) {
+        "0"
+      } else if (inherits(result, "sf")) {
+        as.character(nrow(result))
+      } else {
+        as.character(sam_count(result))
+      }
     })
 
     output$n_points <- shiny::renderText({
@@ -654,6 +798,9 @@ sam_explore <- function(
 
     # Run detection
     shiny::observeEvent(input$detect, {
+      session$sendCustomMessage("setDetecting", TRUE)
+      on.exit(session$sendCustomMessage("setDetecting", FALSE))
+
       # Get current map bounds
       bounds <- input$map_bbox
       if (is.null(bounds)) {
@@ -682,20 +829,44 @@ sam_explore <- function(
       # Build prompts based on type
       result <- tryCatch({
         if (input$prompt_type == "text") {
-          if (is.null(input$text_prompt) || nchar(input$text_prompt) == 0) {
-            rv$status <- "Enter a text description."
+          # Get all prompts with non-empty text
+          active_prompts <- Filter(function(p) nchar(p$text) > 0, rv$prompts)
+          if (length(active_prompts) == 0) {
+            rv$status <- "Enter at least one text description."
             rv$status_type <- "warning"
             return()
           }
-          # Use bbox directly - triggers auto-chunking for large areas
-          sam_detect(
-            bbox = bbox,
-            text = input$text_prompt,
-            source = source,
-            zoom = ext_zoom,
-            threshold = input$threshold,
-            chunked = TRUE
-          )
+
+          # Run detection for each prompt and combine results
+          all_results <- list()
+          for (p in active_prompts) {
+            rv$status <- sprintf("Detecting '%s'...", p$text)
+            det <- sam_detect(
+              bbox = bbox,
+              text = p$text,
+              source = source,
+              zoom = ext_zoom,
+              threshold = input$threshold,
+              chunked = TRUE
+            )
+            if (!is.null(det)) {
+              det_sf <- sam_as_sf(det)
+              if (!is.null(det_sf) && nrow(det_sf) > 0) {
+                det_sf$prompt <- p$text
+                det_sf$prompt_color <- p$color
+                all_results <- c(all_results, list(det_sf))
+              }
+            }
+          }
+
+          if (length(all_results) == 0) {
+            return(NULL)
+          }
+
+          # Combine all results - store as custom result
+          combined_sf <- do.call(rbind, all_results)
+          # Return a list with the combined sf for special handling
+          list(combined_sf = combined_sf, prompts = active_prompts)
 
         } else if (input$prompt_type == "exemplar") {
           drawn <- mapgl::get_drawn_features(get_proxy())
@@ -753,30 +924,84 @@ sam_explore <- function(
         return()
       }
 
-      rv$geosam <- result
-
-      # Add results to map
-      result_sf <- sam_as_sf(result)
-      if (!is.null(result_sf) && nrow(result_sf) > 0) {
-        tryCatch({
-          get_proxy() |>
-            mapgl::clear_layer("detections")
-        }, error = function(e) NULL)
-
+      # Clear existing layers and legend
+      tryCatch({
         get_proxy() |>
-          mapgl::add_fill_layer(
-            id = "detections",
-            source = result_sf,
-            fill_color = "#facc15",
-            fill_opacity = 0.5,
-            fill_outline_color = "#eab308"
-          )
+          mapgl::clear_layer("detections") |>
+          mapgl::clear_legend()
+      }, error = function(e) NULL)
 
-        rv$status <- sprintf("Found %d object(s).", sam_count(result))
-        rv$status_type <- "success"
+      # Handle multi-prompt results (list with combined_sf) vs single geosam
+      if (is.list(result) && !is.null(result$combined_sf)) {
+        # Multi-prompt text detection
+        result_sf <- result$combined_sf
+        active_prompts <- result$prompts
+        rv$geosam <- result_sf  # Store sf for export
+
+        if (nrow(result_sf) > 0) {
+          # Use match_expr for categorical coloring
+          prompt_labels <- sapply(active_prompts, function(p) p$text)
+          prompt_colors_used <- sapply(active_prompts, function(p) p$color)
+
+          fill_color <- if (length(prompt_labels) > 1) {
+            mapgl::match_expr(
+              column = "prompt",
+              values = prompt_labels,
+              stops = prompt_colors_used,
+              default = "#cccccc"
+            )
+          } else {
+            prompt_colors_used[1]
+          }
+
+          get_proxy() |>
+            mapgl::add_fill_layer(
+              id = "detections",
+              source = result_sf,
+              fill_color = fill_color,
+              fill_opacity = 0.5,
+              fill_outline_color = "#333333",
+              popup = mapgl::concat("Prompt: ", mapgl::get_column("prompt"))
+            )
+
+          # Add legend if multiple prompts
+          if (length(prompt_labels) > 1) {
+            get_proxy() |>
+              mapgl::add_categorical_legend(
+                legend_title = "Detected Objects",
+                values = prompt_labels,
+                colors = prompt_colors_used,
+                position = "bottom-left"
+              )
+          }
+
+          rv$status <- sprintf("Found %d object(s) across %d prompt(s).", nrow(result_sf), length(active_prompts))
+          rv$status_type <- "success"
+        } else {
+          rv$status <- "No objects detected."
+          rv$status_type <- "normal"
+        }
       } else {
-        rv$status <- "No objects detected."
-        rv$status_type <- "normal"
+        # Single geosam result (exemplar, points)
+        rv$geosam <- result
+        result_sf <- sam_as_sf(result)
+
+        if (!is.null(result_sf) && nrow(result_sf) > 0) {
+          get_proxy() |>
+            mapgl::add_fill_layer(
+              id = "detections",
+              source = result_sf,
+              fill_color = "#facc15",
+              fill_opacity = 0.5,
+              fill_outline_color = "#eab308"
+            )
+
+          rv$status <- sprintf("Found %d object(s).", sam_count(result))
+          rv$status_type <- "success"
+        } else {
+          rv$status <- "No objects detected."
+          rv$status_type <- "normal"
+        }
       }
     })
 

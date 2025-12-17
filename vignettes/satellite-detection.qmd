@@ -5,422 +5,82 @@ editor: visual
 eval: false
 ---
 
-geosam's primary use case is detecting objects in satellite imagery. You describe what you're looking for in plain text, and SAM3 returns georeferenced polygons ready for spatial analysis. This vignette covers the full workflow from imagery acquisition through result extraction.
+geosam detects objects in satellite imagery using natural language prompts. Describe what you're looking for, and SAM3 returns georeferenced polygons.
 
-## Imagery sources
+## Basic workflow
 
-geosam supports three satellite imagery providers: **Mapbox**, **Esri**, and **MapTiler**. Esri World Imagery can be used without an API key. The other two providers require that you have the following environment variables set:
-
--   Mapbox: `MAPBOX_PUBLIC_TOKEN`
--   MapTiler: `MAPTILER_API_KEY`
-
-These environment variables can be placed in your .Renviron file with `usethis::edit_r_environ()` or set in your R session with `Sys.setenv()`.
-
-### Choosing a zoom level
-
-The `zoom` parameter controls imagery resolution. Higher zoom means more detail but covers less area per tile:
-
-| Zoom | \~Resolution | Good for                          |
-|------|--------------|-----------------------------------|
-| 16   | \~2.4m       | Large structures, land cover      |
-| 17   | \~1.2m       | Buildings, fields, parking lots   |
-| 18   | \~0.6m       | Pools, vehicles, small structures |
-| 19   | \~0.3m       | Fine detail, individual objects   |
-
-For most building detection, zoom 17-18 works well. For smaller objects like pools or vehicles, use zoom 18-19. Higher zoom levels require downloading more tiles, so there's a tradeoff between resolution and processing time.
-
-### Standalone imagery download
-
-If you want to download imagery without running detection, use `get_imagery()`.  Here, we download imagery for a section of Beverly Hills, California.
+The `sam_detect()` function downloads satellite imagery and runs detection in one step. Here we find swimming pools in Beverly Hills:
 
 ```{r}
 library(geosam)
 
-img_path <- get_imagery(
-  bbox = c(-118.41, 34.09, -118.405, 34.095),
-  source = "mapbox",
-  zoom = 17
-)
-```
-
-This returns the path to a GeoTIFF file saved in a temp directory. The image is georeferenced in Web Mercator (EPSG:3857) and can be used with terra, stars, or any other raster package.
-
-To preview your imagery, plot with terra:
-
-```{r}
-library(terra)
-
-img_path |> 
-  rast() |> 
-  plotRGB()
-```
-
-## Text prompt detection
-
-The core of geosam is describing what you want to find in natural language. While you can pass an extracted image for detection, the `sam_detect()` function also handles imagery download and detection in one step:
-
-```{r}
 pools <- sam_detect(
   bbox = c(-118.41, 34.09, -118.405, 34.095),
   text = "swimming pool",
   source = "mapbox",
   zoom = 18
 )
+
+pools
 ```
 
-The returned detection object is of class `geosam`
+Plot the results over the imagery:
 
-### Writing effective prompts
-
-SAM3's text understanding is surprisingly flexible, but some prompts work better than others:
-
-**Be specific about the object type.** "swimming pool" works better than just "pool" (which might match other pool-like shapes). "residential building" may give different results than "commercial building."
-
-**Use common visual descriptors.** The model understands colors, shapes, and materials: "blue roof", "circular tank", "rectangular building", "dirt road."
-
-**Try variations if results aren't right.** If "car" doesn't work well, try "vehicle" or "parked car". If "building" is too broad, try "house" or "warehouse."
-
-### Adjusting the confidence threshold
-
-By default, `sam_detect()` only returns detections with confidence scores above 0.5. For some features—especially those that are visually subtle or don't match common training patterns—you may need to lower this threshold:
-
-``` r
-# Lower threshold to catch more features
-blue_roofs <- sam_detect(
-  bbox = my_bbox,
-  text = "blue roof",
-  threshold = 0.2
-)
+```{r}
+plot(pools)
 ```
 
-Some guidelines:
+For interactive exploration, use `sam_view()`. This launches a Shiny app where you can adjust the confidence threshold with a slider, click polygons to see details, and export results as GeoJSON:
 
--   **Distinct objects** (buildings, roads, pools): Default threshold (0.5) usually works well
--   **Subtle features** (vegetation, color-based detection): Try 0.2–0.3
--   **Unusual objects**: Start low (0.1–0.2) and filter results afterward
-
-When using a low threshold, you'll get more detections but also more false positives. Use `sam_filter()` or `sam_view()`'s confidence slider to refine results after detection.
-
-### Prompts that work well
-
-Based on testing, these prompts tend to produce reliable results:
-
--   Buildings: `"building"`, `"house"`, `"warehouse"`, `"apartment building"`
--   Water features: `"swimming pool"`, `"pond"`, `"lake"`
--   Infrastructure: `"parking lot"`, `"road"`, `"bridge"`
--   Vehicles: `"car"`, `"truck"`, `"vehicle"` (requires zoom 18+)
--   Land cover: `"forest"`, `"field"`, `"bare ground"`
--   Sports: `"tennis court"`, `"football field"`, `"baseball diamond"`
-
-### Bounding box formats
-
-The `bbox` argument accepts several formats:
-
-``` r
-# Numeric vector: c(xmin, ymin, xmax, ymax) in WGS84
-sam_detect(bbox = c(-118.42, 34.08, -118.40, 34.10), text = "building")
-
-# sf or sfc object - extracts bounding box automatically
-sam_detect(bbox = my_sf_polygon, text = "building")
-
-# Named vector also works
-sam_detect(bbox = c(xmin = -118.42, ymin = 34.08, xmax = -118.40, ymax = 34.10), text = "building")
+```{r}
+sam_view(pools)
 ```
 
-When you pass an sf object, geosam transforms it to WGS84 if needed before extracting the bounding box.
+The viewer uses the same imagery source (Mapbox, Esri, or MapTiler) as the detection, so results align with the basemap.
 
-## Working with your own imagery
+## Bring your own imagery
 
-If you have existing satellite or aerial imagery, you can run detection directly on the file:
+If you have existing satellite or aerial imagery, pass the file path directly:
 
-``` r
-result <- sam_detect(
- image = "path/to/your/image.tif",
- text = "building"
-)
-```
-
-geosam includes a sample image from the SpaceNet dataset—a 0.3m WorldView-3 chip from Mumbai:
-
-``` r
-# Path to bundled sample image
+```{r}
+# geosam includes a sample WorldView-3 chip from Mumbai (SpaceNet dataset)
 mumbai <- system.file("extdata", "mumbai_chip.tif", package = "geosam")
 
-# Detect buildings
 buildings <- sam_detect(
- image = mumbai,
- text = "building"
+  image = mumbai,
+  text = "building"
 )
 
-buildings
-```
-
-This 400m x 400m chip shows a neighborhood with distinct buildings, blue tarps/roofs, and visible road networks—good for demonstrating building and feature detection.
-
-### Viewing results from your own imagery
-
-When working with user-supplied GeoTIFFs, the `plot()` method is the best way to visualize results. It overlays detections on your actual imagery:
-
-``` r
-# Plot detections over the source imagery
 plot(buildings)
-
-# Customize colors
-plot(buildings, fill = "#3B82F6", border = "#1E40AF")
 ```
 
-The `plot()` method reads your original image and displays it as the background, ensuring detections align perfectly with the source data.
+Try different prompts on the same image:
 
-### Trying different prompts
-
-The Mumbai chip has diverse urban features. Try different prompts to see what SAM3 can detect:
-
-``` r
-# Roads work well with default threshold
+```{r}
 roads <- sam_detect(image = mumbai, text = "road")
 plot(roads)
 
-# Standalone buildings
-buildings <- sam_detect(image = mumbai, text = "building")
-plot(buildings)
-
-# Blue tarps/roofs need a lower threshold
 blue_roofs <- sam_detect(image = mumbai, text = "blue roof", threshold = 0.2)
 plot(blue_roofs)
-
-# Trees also benefit from lower threshold
-trees <- sam_detect(image = mumbai, text = "tree", threshold = 0.2)
-plot(trees)
 ```
 
-Notice that distinct features like roads and buildings work well with default settings, while color-based or vegetation features need a lower threshold to capture all instances.
+Some features need a lower `threshold` to detect - experiment to see what works for your imagery.
 
-### When text prompts fall short
+## Extracting results
 
-Some visual patterns are hard to describe in words. The Mumbai chip includes informal settlement areas with densely packed small structures—these are difficult to isolate with a text prompt like `"building"` (too broad) or `"informal settlement"` (too abstract).
+Convert detections to an sf object for use in spatial workflows:
 
-This is where the exemplar workflow shines. Instead of describing what you want, you show it: run a broad detection, view the results with `sam_view()`, identify a detection that matches what you're looking for, then use `sam_select()` and `sam_find_similar()` to find all similar objects. See the "Finding similar objects" section below for the full workflow.
+```{r}
+library(sf)
 
-## Extracting and filtering results
-
-### Converting to sf
-
-The `sam_as_sf()` function extracts detections as an sf data frame:
-
-``` r
 buildings_sf <- sam_as_sf(buildings)
 buildings_sf
 ```
 
-The result includes:
+The result includes polygon geometries, confidence scores, and area in square meters. Use `sam_filter()` to filter by score or area before extraction:
 
--   `geometry`: Polygon boundaries in WGS84
--   `score`: Confidence score from 0 to 1
--   `area_m2`: Area in square meters
-
-### Filtering by area
-
-Real-world detections often include spurious small polygons or unexpectedly large regions. Filter by area to focus on objects of the expected size:
-
-``` r
-# Keep only buildings between 50 and 5000 square meters
-buildings_sf <- sam_as_sf(buildings, min_area = 50, max_area = 5000)
-```
-
-You can also filter after extraction:
-
-``` r
-buildings_sf <- sam_as_sf(buildings)
-buildings_sf <- buildings_sf[buildings_sf$area_m2 >= 50, ]
-```
-
-### Filtering by confidence
-
-Use `sam_filter()` to filter the geosam object before extraction:
-
-``` r
-# Keep high-confidence detections
-high_conf <- buildings |>
- sam_filter(min_score = 0.7) |>
- sam_as_sf()
-```
-
-You can combine area and score filters:
-
-``` r
+```{r}
 filtered <- buildings |>
- sam_filter(min_area = 100, max_area = 2000, min_score = 0.6) |>
- sam_as_sf()
+  sam_filter(min_area = 50, min_score = 0.6) |>
+  sam_as_sf()
 ```
-
-### Working with the results
-
-Once you have an sf object, use standard sf operations:
-
-``` r
-library(sf)
-
-# Calculate summary statistics
-summary(buildings_sf$area_m2)
-
-# Count detections
-nrow(buildings_sf)
-
-# Export to file
-st_write(buildings_sf, "buildings.geojson")
-
-# Spatial operations
-centroids <- st_centroid(buildings_sf)
-```
-
-## Viewing results
-
-### Interactive viewing with sam_view()
-
-For imagery downloaded through geosam, `sam_view()` provides an interactive viewer:
-
-``` r
-pools <- sam_detect(
- bbox = c(-118.42, 34.08, -118.40, 34.10),
- text = "swimming pool",
- source = "mapbox",
- zoom = 18
-)
-
-sam_view(pools)
-```
-
-The viewer shows your detections over the same satellite basemap used for detection. Features include:
-
--   **Confidence slider**: Filter detections in real-time by adjusting the minimum confidence threshold
--   **Click for details**: Click any polygon to see its confidence score
--   **GeoJSON export**: Download filtered results directly from the viewer
--   **Boundary box**: A white outline shows the detection area
-
-The viewer automatically uses the same imagery source (Mapbox, Esri, or MapTiler) that was used for detection, ensuring visual consistency.
-
-### Static plots
-
-For user-supplied imagery or quick visualization, use `plot()`:
-
-``` r
-# Default styling
-plot(buildings)
-
-# Custom colors
-plot(buildings, fill = "#22C55E", border = "#15803D", fill_opacity = 0.4)
-
-# Different color palettes for multiple detections
-plot(buildings, palette = "Set2")
-```
-
-The `plot()` method displays your source imagery as the background with detection polygons overlaid.
-
-## Finding similar objects
-
-Sometimes a text prompt doesn't capture exactly what you're looking for. Exemplar-based detection lets you show SAM3 an example object and find all similar objects in the image.
-
-### When you already know where an example is
-
-If you have prior knowledge of where a good example object is located—from field work, another dataset, or visual inspection—you can create a bounding box and use it directly:
-
-``` r
-library(sf)
-
-# Create a box around a known example object
-example_box <- st_bbox(
-  c(xmin = 72.825, ymin = 19.054, xmax = 72.826, ymax = 19.055),
-  crs = 4326
-) |> st_as_sfc() |> st_as_sf()
-
-# Find all similar objects
-similar <- sam_detect(
-  image = mumbai,
-  exemplar = example_box
-)
-
-plot(similar)
-```
-
-This is the most direct approach for scripted or reproducible workflows.
-
-### Discovering an exemplar interactively
-
-When you don't know where a good example is, use text prompts to find candidates, then refine:
-
-``` r
-# Step 1: Broad detection to find candidates
-result <- sam_detect(
-  bbox = c(-118.42, 34.08, -118.40, 34.10),
-  text = "swimming pool",
-  source = "mapbox",
-  zoom = 18
-)
-
-# Step 2: View results and click on the best detection
-sam_view(result)
-# The popup shows "Index: 3" and "Confidence: 0.85"
-
-# Step 3: Use that index to select and find similar
-similar <- result |>
-  sam_select(3) |>
-  sam_find_similar()
-
-sam_view(similar)
-```
-
-The `sam_view()` popup shows both the detection index and confidence score, making it easy to identify which detection to use with `sam_select()`.
-
-For a fully interactive workflow with click-to-detect and real-time exploration, see the [Interactive Workflows](interactive.html) vignette which covers `sam_explore()`.
-
-### When to use exemplar detection
-
-Exemplar detection works well when:
-
--   Text prompts are too broad ("building" matches everything)
--   You want a specific subtype (e.g., houses with pools vs. apartment pools)
--   The object is hard to describe in words
--   You have training data or field observations to use as examples
-
-It's particularly useful for finding objects with distinctive visual characteristics that are easier to show than describe.
-
-## Large area detection
-
-For areas larger than about 1500 x 1500 pixels at your chosen zoom level, geosam automatically splits the detection into chunks. This happens transparently:
-
-``` r
-# Large area - geosam chunks automatically
-large_result <- sam_detect(
- bbox = c(-118.45, 34.05, -118.35, 34.15),
- text = "building",
- zoom = 17
-)
-```
-
-You'll see progress messages as each chunk is processed. The final result combines all detections into a single geosam object.
-
-### Chunking considerations
-
-Chunked detection works well for most cases, but be aware that objects spanning chunk boundaries may be split. For critical applications where boundary artifacts matter, consider:
-
--   Using a smaller area that doesn't require chunking
--   Post-processing to merge adjacent polygons
--   Running detection on overlapping areas
-
-For exploratory analysis, the default chunking behavior is usually fine.
-
-## Tips and best practices
-
-**Start with a small area.** Test your prompt on a small bounding box before scaling up. This saves time and helps you refine your approach.
-
-**Adjust threshold for your features.** Distinct objects (buildings, roads) work at the default 0.5 threshold. Subtle features (vegetation, colors) often need 0.2–0.3. When in doubt, start low and filter afterward.
-
-**Adjust zoom for your objects.** Small objects need higher zoom. If you're not detecting small features, try increasing the zoom level.
-
-**Iterate on prompts.** If results aren't what you expect, try alternative phrasings. "swimming pool" vs "pool", "building" vs "structure", etc.
-
-**Filter by area.** Most real-world objects have expected size ranges. Filtering by area removes many false positives.
-
-**Use exemplar mode when prompts fail.** Some patterns are easier to show than describe. If you can't find the right prompt, use the exemplar workflow to select an example and find similar objects.
-
-**Use the viewer.** `sam_view()` makes it easy to explore results interactively before committing to an analysis approach.

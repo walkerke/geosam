@@ -428,7 +428,7 @@ plot.geosam_image <- function(x, fill = "#FACC15", border = NULL, palette = NULL
 
   if (length(x$masks) == 0) {
     cli::cli_alert_warning("No detections to plot.")
-    if (!add) print(img)
+    print(img)
     return(invisible(img))
   }
 
@@ -521,10 +521,8 @@ plot.geosam_image <- function(x, fill = "#FACC15", border = NULL, palette = NULL
     }
   }
 
-  # Display unless adding
-  if (!add) {
-    print(result)
-  }
+  # Display result
+  print(result)
 
   invisible(result)
 }

@@ -2,92 +2,56 @@
 title: "Interactive workflows"
 format: html
 editor: visual
+eval: false
 ---
 
-geosam includes interactive tools for exploring imagery, running detections, and reviewing results. These are built with Shiny and mapgl.
+geosam includes interactive Shiny tools for exploring imagery and running detections. This vignette covers `sam_explore()`, the main interactive interface for satellite imagery.
 
-### Exploring satellite imagery
+## Exploring satellite imagery
 
-`sam_explore()` opens an interactive map for discovering and detecting objects:
+`sam_explore()` opens an interactive map where you can navigate, detect objects, and export results:
 
-``` r
+```{r}
 library(geosam)
 
 result <- sam_explore(source = "mapbox")
 ```
 
-<!-- TODO: Screenshot of sam_explore interface -->
-
 The interface lets you:
 
-- Navigate to any location
-- Enter text prompts to detect objects
-- Draw points for point-based detection
-- Draw example boxes for exemplar detection
-- Review and export results
+- **Navigate** to any location using the map or search
+- **Text prompts**: Type a description to detect objects (e.g., "swimming pool")
+- **Point prompts**: Click on the map to indicate object locations
+- **Box prompts**: Draw a rectangle around an example object to find similar ones
+- **Adjust threshold**: Use the slider to filter by confidence
+- **Export**: Download results as GeoJSON
 
-When you click "Done", results are returned as a geosam object.
+When you click "Done", results are returned as a geosam object that you can use in R:
 
-### Exploring regular images
-
-`sam_explore_image()` provides similar functionality for photos:
-
-``` r
-result <- sam_explore_image("photo.jpg")
+```{r}
+# After closing sam_explore()
+plot(result)
+sam_as_sf(result)
 ```
 
-<!-- TODO: Screenshot of sam_explore_image -->
+## Choosing an imagery source
 
-### Viewing detection results
+Pass `source` to select the basemap and imagery provider:
+```{r}
+# Esri (no API key required)
+sam_explore(source = "esri")
 
-After running `sam_detect()`, use `sam_view()` to review results:
-
-``` r
-pools <- sam_detect(
-  bbox = c(-118.42, 34.08, -118.40, 34.10),
-  text = "swimming pool",
-  zoom = 18
-)
-
-sam_view(pools)
+# MapTiler
+sam_explore(source = "maptiler")
 ```
 
-<!-- TODO: Screenshot of sam_view -->
+## Exemplar workflow
 
-The viewer includes:
+The interactive interface is particularly useful for exemplar-based detection—finding objects that are hard to describe in words:
 
-- Interactive map with satellite basemap
-- Confidence filtering slider
-- Bounding box outline showing extraction area
-- Click popups with confidence scores
-- GeoJSON export
+1. Navigate to an area with objects you want to detect
+2. Switch to "Box" mode
+3. Draw a rectangle around one good example
+4. SAM3 finds all similar objects in the view
 
-### Customizing the viewer
-
-``` r
-# Custom colors
-sam_view(pools, fill = "#3B82F6", border = "#1D4ED8")
-
-# Adjust opacity
-sam_view(pools, fill_opacity = 0.7)
-
-# Different basemap
-sam_view(pools, source = "esri")
-```
-
-### Image viewer
-
-For non-georeferenced images, use `sam_view_image()`:
-
-``` r
-dogs <- sam_image("photo.jpg", text = "dog")
-sam_view_image(dogs)
-```
-
-<!-- TODO: Describe sam_view_image features -->
-
-### Workflow examples
-
-<!-- TODO: Example workflows -->
-<!-- - Explore → detect → filter → export -->
-<!-- - Programmatic detect → interactive review → export -->
+This is often more effective than trying to craft the perfect text prompt.
