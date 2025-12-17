@@ -290,3 +290,200 @@ sam_find_similar <- function(x) {
     history = c(x$history, list(list(action = "find_similar")))
   )
 }
+
+
+#' Merge Polygons Split at Tile Boundaries
+#'
+#' When detecting objects over large areas, geosam uses tiled processing which
+#' can split objects that span tile boundaries into multiple polygons. This
+#' function merges polygons that are close together, healing those splits.
+#'
+#' @param x A geosam object or sf object with detection results.
+#' @param buffer Distance in meters to buffer polygons before checking for
+#'   overlap. Larger values merge polygons that are further apart. Default is 2.
+#' @param by_prompt If TRUE and a `prompt` column exists, only merge polygons
+#'   with the same prompt value. Default is TRUE.
+#'
+#' @return An sf object with merged polygons. Scores are aggregated by taking
+#'   the maximum score from merged polygons.
+#'
+#' @details
+#' This function is useful when you notice objects being split at regular
+#' intervals (tile boundaries). The default buffer of 2 meters catches most
+#' boundary splits without merging truly separate objects.
+#'
+#' For aggressive merging of nearby objects (not just boundary splits), use
+#' a larger buffer value, but be aware this may merge objects that should
+#' remain separate.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Detect buildings over a large area (uses tiling internally)
+#' buildings <- sam_detect(
+#'   bbox = c(-118.5, 34.0, -118.4, 34.1),
+#'   text = "building",
+#'   zoom = 18
+#' )
+#'
+#' # Merge any buildings split at tile boundaries
+#' merged <- sam_merge_edges(buildings)
+#'
+#' # More aggressive merging (5m buffer)
+#' merged <- sam_merge_edges(buildings, buffer = 5)
+#' }
+sam_merge_edges <- function(x, buffer = 2, by_prompt = TRUE) {
+  # Handle both geosam objects and sf objects
+
+  if (inherits(x, "geosam")) {
+    if (!is.null(x$sf_result)) {
+      sf_obj <- x$sf_result
+    } else {
+      sf_obj <- sam_as_sf(x)
+    }
+  } else if (inherits(x, "sf")) {
+    sf_obj <- x
+  } else {
+    cli::cli_abort("x must be a geosam object or sf object.")
+  }
+
+  if (is.null(sf_obj) || nrow(sf_obj) <= 1) {
+    return(sf_obj)
+  }
+
+  # Check for prompt column
+  has_prompt <- "prompt" %in% names(sf_obj) && by_prompt
+
+  if (has_prompt) {
+    # Process each prompt group separately
+    prompts <- unique(sf_obj$prompt)
+    result_list <- lapply(prompts, function(p) {
+      subset_sf <- sf_obj[sf_obj$prompt == p, ]
+      merged <- .merge_nearby_polygons(subset_sf, buffer)
+      if (nrow(merged) > 0) {
+        merged$prompt <- p
+        # Preserve prompt_color if it exists
+        if ("prompt_color" %in% names(subset_sf)) {
+          merged$prompt_color <- subset_sf$prompt_color[1]
+        }
+      }
+      merged
+    })
+    result <- do.call(rbind, result_list)
+  } else {
+    result <- .merge_nearby_polygons(sf_obj, buffer)
+  }
+
+  # Re-order by score
+  if ("score" %in% names(result)) {
+    result <- result[order(result$score, decreasing = TRUE), ]
+  }
+  rownames(result) <- NULL
+
+  cli::cli_alert_success(
+    "Merged {nrow(sf_obj)} polygons into {nrow(result)} ({nrow(sf_obj) - nrow(result)} merged)"
+  )
+
+  result
+}
+
+
+#' Merge nearby polygons
+#'
+#' Internal function to merge polygons within buffer distance.
+#'
+#' @param sf_obj An sf object
+#' @param buffer Buffer distance in meters
+#' @return An sf object with merged polygons
+#' @noRd
+.merge_nearby_polygons <- function(sf_obj, buffer) {
+  if (nrow(sf_obj) <= 1) {
+    return(sf_obj)
+  }
+
+  # Transform to projected CRS for accurate distance calculations
+  sf_proj <- sf::st_transform(sf_obj, 3857)
+
+  # Buffer polygons to find nearby ones
+
+  buffered <- sf::st_buffer(sf_proj, buffer)
+
+  # Find which polygons intersect after buffering
+
+  intersects_mat <- sf::st_intersects(buffered, sparse = FALSE)
+
+  # Build groups of connected polygons using BFS
+
+  n <- nrow(sf_obj)
+  group <- rep(NA_integer_, n)
+  current_group <- 0L
+
+  for (i in seq_len(n)) {
+    if (is.na(group[i])) {
+      current_group <- current_group + 1L
+      # BFS to find all connected polygons
+      to_visit <- i
+      while (length(to_visit) > 0) {
+        current <- to_visit[1]
+        to_visit <- to_visit[-1]
+
+        if (is.na(group[current])) {
+          group[current] <- current_group
+          # Find neighbors
+          neighbors <- which(intersects_mat[current, ] & is.na(group))
+          to_visit <- c(to_visit, neighbors)
+        }
+      }
+    }
+  }
+
+  # If no merging needed, return as-is
+  if (max(group) == n) {
+    return(sf_obj)
+  }
+
+  # Merge polygons in each group
+  result_list <- list()
+  has_area <- "area_m2" %in% names(sf_obj)
+
+  for (g in seq_len(max(group))) {
+    members <- which(group == g)
+
+    if (length(members) == 1) {
+      # Single polygon, keep as-is
+      result_list[[length(result_list) + 1]] <- sf_obj[members, ]
+    } else {
+      # Multiple polygons - union them
+      group_sf <- sf_proj[members, ]
+      merged_geom <- sf::st_union(sf::st_geometry(group_sf))
+
+      # Take the max score from the group
+      max_score <- if ("score" %in% names(sf_obj)) {
+        max(sf_obj$score[members])
+      } else {
+        NA_real_
+      }
+
+      # Calculate new area
+      new_area <- as.numeric(sf::st_area(merged_geom))
+
+      # Create new sf row
+      new_row <- sf::st_sf(
+        geometry = sf::st_transform(merged_geom, sf::st_crs(sf_obj))
+      )
+
+      if ("score" %in% names(sf_obj)) {
+        new_row$score <- max_score
+      }
+      if (has_area) {
+        new_row$area_m2 <- new_area
+      }
+
+      result_list[[length(result_list) + 1]] <- new_row
+    }
+  }
+
+  # Combine results
+  do.call(rbind, result_list)
+}

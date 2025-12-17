@@ -90,7 +90,9 @@ sam_view <- function(
           top: 10px;
           right: 10px;
           z-index: 1000;
-          background: white;
+          background: rgba(255, 255, 255, 0.8);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
           border-radius: 8px;
           box-shadow: 0 2px 10px rgba(0,0,0,0.15);
           padding: 16px;

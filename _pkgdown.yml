@@ -1,10 +1,26 @@
 url: https://walker-data.com/geosam/
 
+home:
+  title: geosam
+  description: Geospatial Image Segmentation with SAM3 in R
+
 template:
   bootstrap: 5
-  bootswatch: flatly
+  bslib:
+    preset: shiny
+    primary: "#154733"
+    secondary: "#facc15"
+    success: "#154733"
+    info: "#facc15"
+    navbar-bg: "#154733"
+    navbar-light-color: "#ffffff"
+    navbar-light-hover-color: "#facc15"
+    navbar-light-active-color: "#facc15"
+    link-color: "#154733"
+    link-hover-color: "#0d2e21"
 
 navbar:
+  bg: primary
   structure:
     left: [intro, reference, articles]
     right: [search, github]
@@ -51,6 +67,7 @@ reference:
   - sam_filter
   - sam_select
   - sam_find_similar
+  - sam_merge_edges
 
 - title: Batch Processing
   desc: Process multiple inputs
@@ -69,10 +86,12 @@ reference:
   - geosam_clear_cache
 
 - title: Class Helpers
-  desc: Object validation
+  desc: Object validation and methods
   contents:
   - is_geosam
   - is_geosam_image
+  - print.geosam
+  - print.geosam_image
 
 articles:
 - title: Getting Started

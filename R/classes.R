@@ -521,10 +521,13 @@ plot.geosam_image <- function(x, fill = "#FACC15", border = NULL, palette = NULL
     }
   }
 
-  # Display result
-  print(result)
 
-  invisible(result)
+  # Display result - skip print in knitr (it will render the returned object)
+  if (!isTRUE(getOption("knitr.in.progress"))) {
+    print(result)
+  }
+
+  result
 }
 
 

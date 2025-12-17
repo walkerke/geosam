@@ -2,14 +2,40 @@
 title: "Satellite imagery detection"
 format: html
 editor: visual
-eval: false
+execute:
+  message: false
+  warning: false
 ---
 
-geosam detects objects in satellite imagery using natural language prompts. Describe what you're looking for, and SAM3 returns georeferenced polygons.
+With **geosam**, you can detect objects in satellite imagery using natural language prompts. Describe what you're looking for, and SAM3 returns georeferenced polygons.
+
+The package hooks SAM3 into R's geospatial infrastructure, using the terra package for raster processing and mapgl for interactive visualization. Let's get started!
 
 ## Basic workflow
 
-The `sam_detect()` function downloads satellite imagery and runs detection in one step. Here we find swimming pools in Beverly Hills:
+If you don't have satellite imagery to use, you can download imagery with geosam from Mapbox, Esri World Imagery, or MapTiler with the `get_imagery()` function. Let's grab imagery from Mapbox for a section of Beverly Hills, California:
+
+```{r}
+library(geosam)
+
+imagery <- get_imagery(
+  bbox = c(-118.41, 34.09, -118.405, 34.095),
+  source = "mapbox",
+  zoom = 18
+)
+
+imagery
+```
+
+The zoom level will control the level of detail in the downloaded imagery, with larger zooms resulting in higher resolution images. The function returns a path to a GeoTIFF file containing the downloaded imagery. We can plot it with the terra package:
+
+```{r}
+library(terra)
+
+plotRGB(rast(imagery))
+```
+
+You can use this GeoTIFF file as input to the `sam_detect()` function, or you can simply use `sam_detect()` to download satellite imagery and run detection in one step. Here we find swimming pools in that section of Beverly Hills:
 
 ```{r}
 library(geosam)
@@ -24,23 +50,32 @@ pools <- sam_detect(
 pools
 ```
 
-Plot the results over the imagery:
+`pools` is an object of class `geosam` which represents the extraction result.
+
+To visualize the results of your extraction, use `plot()`:
 
 ```{r}
 plot(pools)
 ```
 
+Plotting geosam objects will visualize the extracted polygons on the original imagery. Here, we see the extracted pools visualized in yellow over the Mapbox image.
+
 For interactive exploration, use `sam_view()`. This launches a Shiny app where you can adjust the confidence threshold with a slider, click polygons to see details, and export results as GeoJSON:
 
 ```{r}
+#| eval: false
 sam_view(pools)
 ```
 
-The viewer uses the same imagery source (Mapbox, Esri, or MapTiler) as the detection, so results align with the basemap.
+`sam_view()` launches a Shiny gadget that gives you an interactive view of your extraction results. The viewer uses the same imagery source (Mapbox, Esri, or MapTiler) as the detection, so results align with the basemap. The white rectangle represents the area SAM3 scanned for extraction results. Click any extracted object to view its index and confidence score (0-1), filter your results by confidence score, and export your result as GeoJSON if you'd like.
+
+![](images/paste-3.png)
+
+**Please note the terms of service for the satellite imagery providers.** All providers allow for feature extraction from their satellite imagery for non-commercial usage, so you can use this tool for research or analysis purposes. You aren't allowed to extract data from their imagery and re-sell it. As geosam is MIT-licensed, you alone are responsible for honoring these terms of service in your use of the package.
 
 ## Bring your own imagery
 
-If you have existing satellite or aerial imagery, pass the file path directly:
+If you have existing georeferenced satellite or aerial imagery, you can pass the file path directly to use it in `sam_detect()`. geosam bundles an imagery chip for Mumbai, India from the SpaceNet dataset that you can experiment with. Let's take a look at it.
 
 ```{r}
 # geosam includes a sample WorldView-3 chip from Mumbai (SpaceNet dataset)
@@ -54,21 +89,37 @@ buildings <- sam_detect(
 plot(buildings)
 ```
 
-Try different prompts on the same image:
+`sam_detect()` found 73 buildings, generally picking out discrete structures but leaving out some of the more densely-packed areas. One reason for this is because `sam_detect()` defaults to a confidence threshold of 0.5 in its extraction results. If you want to be more generous with the extraction and return all results found by SAM3, you can lower the threshold:
 
 ```{r}
-roads <- sam_detect(image = mumbai, text = "road")
-plot(roads)
+buildings_01 <- sam_detect(
+  image = mumbai,
+  text = "building",
+  threshold = 0.1
+)
 
+plot(buildings_01)
+```
+
+175 objects are now detected, picking up most buildings in the view but also returning some false positives.
+
+Experiment with different types of prompts and see what you get back. For example, we can look for trees in the image:
+
+```{r}
+trees <- sam_detect(image = mumbai, text = "trees", threshold = 0.3)
+plot(trees)
+```
+
+SAM3 also understands color, so you can segment your image by object color as needed.\
+
+```{r}
 blue_roofs <- sam_detect(image = mumbai, text = "blue roof", threshold = 0.2)
 plot(blue_roofs)
 ```
 
-Some features need a lower `threshold` to detect - experiment to see what works for your imagery.
-
 ## Extracting results
 
-Convert detections to an sf object for use in spatial workflows:
+The function `sam_as_sf()` will convert an object of class `geosam` to an object of class `sf` for use in spatial analysis workflows. Let's convert our original buildings object and see what we get back.
 
 ```{r}
 library(sf)
@@ -83,4 +134,19 @@ The result includes polygon geometries, confidence scores, and area in square me
 filtered <- buildings |>
   sam_filter(min_area = 50, min_score = 0.6) |>
   sam_as_sf()
+
+filtered
 ```
+
+With the sf object in hand, we can use our extracted results downstream in R's suite of spatial analysis and mapping packages. For example, we can visualize our polygons interactively with the mapgl R package:
+
+```{r}
+#| eval: true
+library(mapgl)
+
+maplibre_view(buildings_sf)
+```
+
+We notice here that our extractions do not perfectly align with the basemap; this is because our image source and the source of the basemap building footprints are likely slightly different.
+
+This reflects the advantage of using the built-in imagery pipelines with this package as they are pulling directly from the map tiles providers allowing for alignment on your interactive maps.

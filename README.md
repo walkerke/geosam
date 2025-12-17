@@ -1,147 +1,38 @@
-# geosam
+# geosam <a href="https://walker-data.com/geosam/"><img src="man/figures/logo.png" align="right" height="120" alt="geosam website" /></a>
 
-Geospatial Image Segmentation with Meta's SAM3 in R.
+The **geosam** R package brings Meta's [Segment Anything Model 3 (SAM3)](https://ai.meta.com/sam2/) to R for detecting objects in satellite imagery and photos. Describe what you're looking for in plain text—no training data or model fine-tuning required. The package is inspired by the Python package [segment-geospatial](https://samgeo.gishub.org/) by Qiusheng Wu, and aims to bring similar functionality to R users.
 
-## Overview
-
-geosam provides a native R interface to Meta's Segment Anything Model 3 (SAM3) for detecting objects in satellite imagery and photos. Unlike traditional computer vision, SAM3 lets you describe what you're looking for in plain text—no training data or model fine-tuning required.
-
-- **Text prompts**: Describe what you're looking for ("swimming pool", "building", "solar panel")
-- **Exemplar detection**: Draw a box around one example, find all similar objects
-- **Point prompts**: Click positive/negative points to guide segmentation
-- **Interactive tools**: Shiny-powered viewers for exploration and refinement
-
-Works with both **georeferenced satellite imagery** (returns sf polygons in real-world coordinates) and **regular images** (returns pixel coordinates).
-
-## Installation
+Install the development version from GitHub:
 
 ```r
-# Install from GitHub
 remotes::install_github("walkerke/geosam")
+```
 
-# Install Python dependencies
+Then set up the Python environment:
+
+```r
 library(geosam)
 geosam_install()
 ```
 
-You'll need a HuggingFace account with access to SAM3. Visit the [SAM3 model page](https://huggingface.co/facebook/sam3) to request access, then set your token:
+You'll need a [HuggingFace account](https://huggingface.co/) with access to the [SAM3 model](https://huggingface.co/facebook/sam3).
 
-```r
-Sys.setenv(HF_TOKEN = "your_huggingface_token")
-```
+Read through these vignettes to learn how to use the package:
 
-For satellite imagery with Mapbox:
+- [Getting started with __geosam__](https://walker-data.com/geosam/articles/getting-started.html)
 
-```r
-Sys.setenv(MAPBOX_PUBLIC_TOKEN = "your_mapbox_token")
-```
+- [Satellite imagery detection](https://walker-data.com/geosam/articles/satellite-detection.html)
 
-Esri World Imagery works without an API key.
+- [Regular image detection](https://walker-data.com/geosam/articles/image-detection.html)
 
-## Quick Start
+- [Interactive workflows](https://walker-data.com/geosam/articles/interactive.html)
 
-### Satellite Imagery
+## Support and how to learn more
 
-Detect swimming pools in Beverly Hills:
+If you find this project useful in your work and would like to ensure continued development of the package, you can provide support in the following ways:
 
-```r
-library(geosam)
+* [Chip in some funds to support package development via PayPal](https://www.paypal.com/paypalme/walkerdata/);
+* Set up a consulting engagement or workshop through Walker Data to help you implement __geosam__ in your project. Send a note to <kyle@walker-data.com> if you are interested;
+* File an issue - or even better, a pull request - at https://github.com/walkerke/geosam/issues.
 
-pools <- sam_detect(
-  bbox = c(-118.41, 34.09, -118.405, 34.095),
-  text = "swimming pool",
-  source = "mapbox",
-  zoom = 18
-)
-
-# View results
-plot(pools)
-
-# Interactive viewer with confidence slider
-sam_view(pools)
-
-# Extract as sf polygons
-pools_sf <- sam_as_sf(pools)
-```
-
-### Bring Your Own Imagery
-
-geosam includes a sample WorldView-3 chip from Mumbai (SpaceNet dataset):
-
-```r
-mumbai <- system.file("extdata", "mumbai_chip.tif", package = "geosam")
-
-buildings <- sam_detect(image = mumbai, text = "building")
-plot(buildings)
-
-# Try different prompts
-roads <- sam_detect(image = mumbai, text = "road")
-```
-
-### Regular Images
-
-Detect objects in photos using `sam_image()`:
-
-```r
-# Sample fruit plate image included in package
-fruit <- system.file("extdata", "fruit_plate.jpg", package = "geosam")
-
-berries <- sam_image(fruit, text = "strawberry")
-plot(berries)
-
-# Multiple prompts, combine results
-cherries <- sam_image(fruit, text = "cherry")
-p <- plot(cherries)
-plot(sam_image(fruit, text = "chocolate"), add = TRUE, base_img = p, fill = "purple")
-```
-
-### Interactive Exploration
-
-Explore satellite imagery and detect interactively:
-
-```r
-result <- sam_explore(source = "mapbox")
-
-# Navigate the map, enter text prompts, draw boxes, click points...
-# Returns geosam object when you click "Done"
-
-polygons <- sam_as_sf(result)
-```
-
-For regular images:
-
-```r
-result <- sam_explore_image("photo.jpg")
-```
-
-## Key Functions
-
-| Function | Description |
-|----------|-------------|
-| `sam_detect()` | Detect objects in satellite imagery |
-| `sam_image()` | Detect objects in regular images |
-| `sam_explore()` | Interactive satellite imagery explorer |
-| `sam_explore_image()` | Interactive image explorer |
-| `sam_view()` | Interactive viewer for detection results |
-| `sam_as_sf()` | Extract sf polygons |
-| `sam_filter()` | Filter by area or confidence score |
-| `plot()` | Static plotting for geosam objects |
-
-## Imagery Sources
-
-| Source | API Key Required | Notes |
-|--------|------------------|-------|
-| Mapbox | Yes (`MAPBOX_PUBLIC_TOKEN`) | High-quality imagery |
-| Esri | No | Good default option |
-| MapTiler | Yes (`MAPTILER_API_KEY`) | Alternative provider |
-
-## Requirements
-
-- R >= 4.1
-- Python >= 3.12
-- HuggingFace account with SAM3 access
-- For interactive features: shiny, mapgl packages
-
-## License
-
-MIT
+To stay on top of package updates / new features and to get information about trainings, [be sure to sign up for the Walker Data mailing list here](https://walker-data.us15.list-manage.com/subscribe?u=1829a68a5eda3d301119fdcd6&id=c4a53d2961).
