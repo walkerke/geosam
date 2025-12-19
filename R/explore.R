@@ -38,20 +38,23 @@
 #' }
 #' }
 sam_explore <- function(
-    source = c("mapbox", "esri", "maptiler"),
-    center = NULL,
-    bbox = NULL,
-    zoom = 15,
-    ...
+  source = c("mapbox", "esri", "maptiler"),
+  center = NULL,
+  bbox = NULL,
+  zoom = 15,
+  ...
 ) {
-  rlang::check_installed(c("shiny", "mapgl"), reason = "for interactive exploration")
+  rlang::check_installed(
+    c("shiny", "mapgl"),
+    reason = "for interactive exploration"
+  )
   source <- match.arg(source)
 
- # Check for required API keys and fall back to Esri if missing
+  # Check for required API keys and fall back to Esri if missing
   source <- .resolve_map_source(source)
 
   # Default center to US
- if (is.null(center) && is.null(bbox)) {
+  if (is.null(center) && is.null(bbox)) {
     center <- c(-98, 39)
     zoom <- 4
   }
@@ -66,7 +69,6 @@ sam_explore <- function(
     width_deg <- bbox[3] - bbox[1]
     zoom <- max(1, min(18, round(8 - log2(width_deg))))
   }
-
 
   # Capture extra args for sam_detect
   detect_args <- list(...)
@@ -86,7 +88,6 @@ sam_explore <- function(
 
 #' @noRd
 .explore_ui <- function(source) {
-
   # Choose correct output function based on source
   map_output <- if (source == "mapbox") {
     mapgl::mapboxglOutput("map", height = "100%")
@@ -96,7 +97,8 @@ sam_explore <- function(
 
   shiny::fillPage(
     shiny::tags$head(
-      shiny::tags$style(shiny::HTML("
+      shiny::tags$style(shiny::HTML(
+        "
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
 
         .control-panel {
@@ -363,8 +365,10 @@ sam_explore <- function(
           pointer-events: none;
           background: #1a5c42;
         }
-      ")),
-      shiny::tags$script(shiny::HTML("
+      "
+      )),
+      shiny::tags$script(shiny::HTML(
+        "
         Shiny.addCustomMessageHandler('setDetecting', function(detecting) {
           var btn = document.getElementById('detect');
           if (detecting) {
@@ -375,7 +379,8 @@ sam_explore <- function(
             btn.classList.remove('detecting');
           }
         });
-      "))
+      "
+      ))
     ),
 
     map_output,
@@ -391,12 +396,18 @@ sam_explore <- function(
       shiny::div(
         class = "info-row",
         shiny::span(class = "info-label", "Zoom:"),
-        shiny::span(class = "info-value", shiny::textOutput("current_zoom", inline = TRUE))
+        shiny::span(
+          class = "info-value",
+          shiny::textOutput("current_zoom", inline = TRUE)
+        )
       ),
       shiny::div(
         class = "info-row",
         shiny::span(class = "info-label", "Area:"),
-        shiny::span(class = "info-value", shiny::textOutput("view_area", inline = TRUE))
+        shiny::span(
+          class = "info-value",
+          shiny::textOutput("view_area", inline = TRUE)
+        )
       ),
       shiny::uiOutput("zoom_warning"),
 
@@ -407,7 +418,11 @@ sam_explore <- function(
       shiny::radioButtons(
         "prompt_type",
         label = NULL,
-        choices = c("Text" = "text", "Example" = "exemplar", "Points" = "points"),
+        choices = c(
+          "Text" = "text",
+          "Example" = "exemplar",
+          "Points" = "points"
+        ),
         selected = "text",
         inline = TRUE
       ),
@@ -415,22 +430,34 @@ sam_explore <- function(
       # Text mode panel
       shiny::conditionalPanel(
         condition = "input.prompt_type == 'text'",
-        shiny::p(class = "help-text", "Describe objects to find. Add multiple prompts for different object types."),
+        shiny::p(
+          class = "help-text",
+          "Describe objects to find. Add multiple prompts for different object types."
+        ),
         shiny::uiOutput("prompt_rows_ui"),
-        shiny::actionButton("add_prompt", "+ Add prompt", class = "btn-add-prompt")
+        shiny::actionButton(
+          "add_prompt",
+          "+ Add prompt",
+          class = "btn-add-prompt"
+        )
       ),
 
       # Exemplar mode panel
       shiny::conditionalPanel(
         condition = "input.prompt_type == 'exemplar'",
-        shiny::p(class = "help-text", "Draw a rectangle around ONE example. SAM will find all similar objects."),
-        shiny::actionButton("clear_drawing", "Clear Box", class = "btn-secondary")
+        shiny::p(
+          class = "help-text",
+          "Draw a rectangle around ONE example. SAM will find all similar objects. Use the trash icon to clear."
+        )
       ),
 
       # Points mode panel
       shiny::conditionalPanel(
         condition = "input.prompt_type == 'points'",
-        shiny::p(class = "help-text", "Click to add points. Green (+) includes, red (-) excludes."),
+        shiny::p(
+          class = "help-text",
+          "Click to add points. Green (+) includes, red (-) excludes."
+        ),
         shiny::radioButtons(
           "point_mode",
           label = NULL,
@@ -440,16 +467,28 @@ sam_explore <- function(
         ),
         shiny::div(
           style = "margin-bottom: 8px; font-size: 11px;",
-          "Points: ", shiny::textOutput("n_points", inline = TRUE)
+          "Points: ",
+          shiny::textOutput("n_points", inline = TRUE)
         ),
-        shiny::actionButton("clear_points", "Clear Points", class = "btn-secondary")
+        shiny::actionButton(
+          "clear_points",
+          "Clear Points",
+          class = "btn-secondary"
+        )
       ),
 
       shiny::div(class = "divider"),
 
       # Threshold slider
       shiny::div(class = "section-label", "Confidence"),
-      shiny::sliderInput("threshold", label = NULL, min = 0.1, max = 0.9, value = 0.5, step = 0.1),
+      shiny::sliderInput(
+        "threshold",
+        label = NULL,
+        min = 0.1,
+        max = 0.9,
+        value = 0.5,
+        step = 0.1
+      ),
 
       # Extraction zoom selector
       shiny::div(class = "section-label", "Extraction Zoom"),
@@ -469,7 +508,10 @@ sam_explore <- function(
       shiny::div(
         class = "info-row",
         shiny::span(class = "info-label", "Est. tiles:"),
-        shiny::span(class = "info-value", shiny::textOutput("tile_estimate", inline = TRUE))
+        shiny::span(
+          class = "info-value",
+          shiny::textOutput("tile_estimate", inline = TRUE)
+        )
       ),
       shiny::uiOutput("tile_warning"),
 
@@ -483,9 +525,16 @@ sam_explore <- function(
       shiny::div(
         class = "info-row",
         shiny::span(class = "info-label", "Detections:"),
-        shiny::span(class = "info-value", shiny::textOutput("n_detections", inline = TRUE))
+        shiny::span(
+          class = "info-value",
+          shiny::textOutput("n_detections", inline = TRUE)
+        )
       ),
-      shiny::actionButton("clear_results", "Clear Results", class = "btn-secondary"),
+      shiny::actionButton(
+        "clear_results",
+        "Clear Results",
+        class = "btn-secondary"
+      ),
 
       shiny::div(class = "divider"),
 
@@ -498,10 +547,22 @@ sam_explore <- function(
 
 
 #' @noRd
-.explore_server <- function(source, initial_center, initial_zoom, detect_args = list()) {
+.explore_server <- function(
+  source,
+  initial_center,
+  initial_zoom,
+  detect_args = list()
+) {
   function(input, output, session) {
     # Color palette for prompts
-    prompt_colors <- c("#facc15", "#3b82f6", "#ef4444", "#22c55e", "#a855f7", "#f97316")
+    prompt_colors <- c(
+      "#facc15",
+      "#3b82f6",
+      "#ef4444",
+      "#22c55e",
+      "#a855f7",
+      "#f97316"
+    )
 
     # Reactive values
     rv <- shiny::reactiveValues(
@@ -537,9 +598,7 @@ sam_explore <- function(
           mapgl::add_navigation_control(position = "top-left") |>
           mapgl::add_scale_control(position = "bottom-left", unit = "imperial")
       })
-    } else if (source == "maptiler")
-
-{
+    } else if (source == "maptiler") {
       # MapTiler - use maplibre with maptiler_style
       output$map <- mapgl::renderMaplibre({
         mapgl::maplibre(
@@ -581,7 +640,8 @@ sam_explore <- function(
           controls = list(polygon = TRUE, trash = TRUE),
           rectangle = TRUE
         )
-    }) |> shiny::bindEvent(input$map_bbox, once = TRUE)
+    }) |>
+      shiny::bindEvent(input$map_bbox, once = TRUE)
 
     # Render prompt rows UI
     output$prompt_rows_ui <- shiny::renderUI({
@@ -590,12 +650,16 @@ sam_explore <- function(
         p <- prompts[[i]]
         shiny::div(
           class = "prompt-row",
-          shiny::div(class = "prompt-color", style = sprintf("background: %s;", p$color)),
+          shiny::div(
+            class = "prompt-color",
+            style = sprintf("background: %s;", p$color)
+          ),
           shiny::textInput(
             inputId = paste0("prompt_text_", p$id),
             label = NULL,
             value = p$text,
-            placeholder = if (i == 1) "e.g., swimming pool" else "another object type"
+            placeholder = if (i == 1) "e.g., swimming pool" else
+              "another object type"
           ),
           if (length(prompts) > 1) {
             shiny::actionButton(
@@ -616,14 +680,24 @@ sam_explore <- function(
         current_prompts <- lapply(rv$prompts, function(p) {
           input_id <- paste0("prompt_text_", p$id)
           text <- input[[input_id]]
-          list(id = p$id, text = if (is.null(text)) "" else text, color = p$color)
+          list(
+            id = p$id,
+            text = if (is.null(text)) "" else text,
+            color = p$color
+          )
         })
-        new_color <- prompt_colors[min(length(current_prompts) + 1, length(prompt_colors))]
-        rv$prompts <- c(current_prompts, list(list(
-          id = rv$next_prompt_id,
-          text = "",
-          color = new_color
-        )))
+        new_color <- prompt_colors[min(
+          length(current_prompts) + 1,
+          length(prompt_colors)
+        )]
+        rv$prompts <- c(
+          current_prompts,
+          list(list(
+            id = rv$next_prompt_id,
+            text = "",
+            color = new_color
+          ))
+        )
         rv$next_prompt_id <- rv$next_prompt_id + 1
       }
     })
@@ -633,15 +707,24 @@ sam_explore <- function(
       prompts <- rv$prompts
       lapply(prompts, function(p) {
         btn_id <- paste0("remove_prompt_", p$id)
-        shiny::observeEvent(input[[btn_id]], {
-          # Capture current text values before removing
-          current_prompts <- lapply(rv$prompts, function(pr) {
-            input_id <- paste0("prompt_text_", pr$id)
-            text <- input[[input_id]]
-            list(id = pr$id, text = if (is.null(text)) "" else text, color = pr$color)
-          })
-          rv$prompts <- Filter(function(x) x$id != p$id, current_prompts)
-        }, ignoreInit = TRUE, once = TRUE)
+        shiny::observeEvent(
+          input[[btn_id]],
+          {
+            # Capture current text values before removing
+            current_prompts <- lapply(rv$prompts, function(pr) {
+              input_id <- paste0("prompt_text_", pr$id)
+              text <- input[[input_id]]
+              list(
+                id = pr$id,
+                text = if (is.null(text)) "" else text,
+                color = pr$color
+              )
+            })
+            rv$prompts <- Filter(function(x) x$id != p$id, current_prompts)
+          },
+          ignoreInit = TRUE,
+          once = TRUE
+        )
       })
     })
 
@@ -680,27 +763,36 @@ sam_explore <- function(
       bounds <- input$map_bbox
       if (is.null(bounds)) return("-")
 
-      tryCatch({
-        # mapgl returns xmin/ymin/xmax/ymax
-        if (is.null(bounds$xmin) || is.null(bounds$xmax) ||
-            is.null(bounds$ymin) || is.null(bounds$ymax)) {
-          return("-")
-        }
+      tryCatch(
+        {
+          # mapgl returns xmin/ymin/xmax/ymax
+          if (
+            is.null(bounds$xmin) ||
+              is.null(bounds$xmax) ||
+              is.null(bounds$ymin) ||
+              is.null(bounds$ymax)
+          ) {
+            return("-")
+          }
 
-        # Calculate approximate area in km²
-        lat_mid <- (bounds$ymax + bounds$ymin) / 2
-        width_km <- (bounds$xmax - bounds$xmin) * 111.32 * cos(lat_mid * pi / 180)
-        height_km <- (bounds$ymax - bounds$ymin) * 111.32
-        area_km2 <- width_km * height_km
+          # Calculate approximate area in km²
+          lat_mid <- (bounds$ymax + bounds$ymin) / 2
+          width_km <- (bounds$xmax - bounds$xmin) *
+            111.32 *
+            cos(lat_mid * pi / 180)
+          height_km <- (bounds$ymax - bounds$ymin) * 111.32
+          area_km2 <- width_km * height_km
 
-        if (area_km2 < 1) {
-          sprintf("%.0f m²", area_km2 * 1e6)
-        } else if (area_km2 < 100) {
-          sprintf("%.1f km²", area_km2)
-        } else {
-          sprintf("%.0f km²", area_km2)
-        }
-      }, error = function(e) "-")
+          if (area_km2 < 1) {
+            sprintf("%.0f m²", area_km2 * 1e6)
+          } else if (area_km2 < 100) {
+            sprintf("%.1f km²", area_km2)
+          } else {
+            sprintf("%.0f km²", area_km2)
+          }
+        },
+        error = function(e) "-"
+      )
     })
 
     output$zoom_warning <- shiny::renderUI({
@@ -716,11 +808,14 @@ sam_explore <- function(
       ext_zoom <- as.integer(input$extraction_zoom %||% 17)
       bbox <- c(bounds$xmin, bounds$ymin, bounds$xmax, bounds$ymax)
 
-      tryCatch({
-        dims <- .calc_bbox_pixels(bbox, ext_zoom, source)
-        n_tiles <- dims$n_tiles_x * dims$n_tiles_y
-        format(n_tiles, big.mark = ",")
-      }, error = function(e) "-")
+      tryCatch(
+        {
+          dims <- .calc_bbox_pixels(bbox, ext_zoom, source)
+          n_tiles <- dims$n_tiles_x * dims$n_tiles_y
+          format(n_tiles, big.mark = ",")
+        },
+        error = function(e) "-"
+      )
     })
 
     # Tile warning
@@ -731,31 +826,35 @@ sam_explore <- function(
       ext_zoom <- as.integer(input$extraction_zoom %||% 17)
       bbox <- c(bounds$xmin, bounds$ymin, bounds$xmax, bounds$ymax)
 
-      tryCatch({
-        dims <- .calc_bbox_pixels(bbox, ext_zoom, source)
-        n_tiles <- dims$n_tiles_x * dims$n_tiles_y
+      tryCatch(
+        {
+          dims <- .calc_bbox_pixels(bbox, ext_zoom, source)
+          n_tiles <- dims$n_tiles_x * dims$n_tiles_y
 
-        if (n_tiles > 500) {
-          shiny::div(
-            class = "status-box status-error",
-            style = "margin-top: 6px; padding: 6px 8px;",
-            "Too many tiles. Zoom in or use lower extraction zoom."
-          )
-        } else if (n_tiles > 200) {
-          shiny::div(
-            class = "status-box status-warning",
-            style = "margin-top: 6px; padding: 6px 8px;",
-            "Large extraction - may take several minutes."
-          )
-        } else {
-          NULL
-        }
-      }, error = function(e) NULL)
+          if (n_tiles > 500) {
+            shiny::div(
+              class = "status-box status-error",
+              style = "margin-top: 6px; padding: 6px 8px;",
+              "Too many tiles. Zoom in or use lower extraction zoom."
+            )
+          } else if (n_tiles > 200) {
+            shiny::div(
+              class = "status-box status-warning",
+              style = "margin-top: 6px; padding: 6px 8px;",
+              "Large extraction - may take several minutes."
+            )
+          } else {
+            NULL
+          }
+        },
+        error = function(e) NULL
+      )
     })
 
     # Status display
     output$status_ui <- shiny::renderUI({
-      cls <- switch(rv$status_type,
+      cls <- switch(
+        rv$status_type,
         success = "status-success",
         error = "status-error",
         warning = "status-warning",
@@ -772,18 +871,24 @@ sam_explore <- function(
           # Default to positive if not yet initialized
           mode <- input$point_mode %||% "positive"
           label <- if (mode == "positive") 1L else 0L
-          rv$points <- c(rv$points, list(list(
-            lng = click$lng,
-            lat = click$lat,
-            label = label
-          )))
+          rv$points <- c(
+            rv$points,
+            list(list(
+              lng = click$lng,
+              lat = click$lat,
+              label = label
+            ))
+          )
 
           # Add marker - green for positive, red for negative
           marker_color <- if (label == 1L) "#16a34a" else "#ef4444"
           get_proxy() |>
             mapgl::add_markers(
               data = sf::st_sf(
-                geometry = sf::st_sfc(sf::st_point(c(click$lng, click$lat)), crs = 4326)
+                geometry = sf::st_sfc(
+                  sf::st_point(c(click$lng, click$lat)),
+                  crs = 4326
+                )
               ),
               color = marker_color
             )
@@ -800,23 +905,17 @@ sam_explore <- function(
       rv$status_type <- "normal"
     })
 
-    # Clear drawing
-    shiny::observeEvent(input$clear_drawing, {
-      rv$drawn_bbox <- NULL
-      get_proxy() |>
-        mapgl::clear_draw()
-      rv$status <- "Box cleared. Draw around an example."
-      rv$status_type <- "normal"
-    })
-
     # Clear results
     shiny::observeEvent(input$clear_results, {
       rv$geosam <- NULL
-      tryCatch({
-        get_proxy() |>
-          mapgl::clear_layer("detections") |>
-          mapgl::clear_legend()
-      }, error = function(e) NULL)
+      tryCatch(
+        {
+          get_proxy() |>
+            mapgl::clear_layer("detections") |>
+            mapgl::clear_legend()
+        },
+        error = function(e) NULL
+      )
       rv$status <- "Results cleared."
       rv$status_type <- "normal"
     })
@@ -838,120 +937,138 @@ sam_explore <- function(
       ext_zoom <- as.integer(input$extraction_zoom %||% 17)
 
       # Check tile count
-      tryCatch({
-        dims <- .calc_bbox_pixels(bbox, ext_zoom, source)
-        n_tiles <- dims$n_tiles_x * dims$n_tiles_y
-        if (n_tiles > 500) {
-          rv$status <- "Area too large. Zoom in or use lower extraction zoom."
-          rv$status_type <- "error"
-          return()
-        }
-      }, error = function(e) NULL)
+      tryCatch(
+        {
+          dims <- .calc_bbox_pixels(bbox, ext_zoom, source)
+          n_tiles <- dims$n_tiles_x * dims$n_tiles_y
+          if (n_tiles > 500) {
+            rv$status <- "Area too large. Zoom in or use lower extraction zoom."
+            rv$status_type <- "error"
+            return()
+          }
+        },
+        error = function(e) NULL
+      )
 
       rv$status <- "Running detection (this may take a moment)..."
       rv$status_type <- "normal"
 
       # Build prompts based on type
-      result <- tryCatch({
-        if (input$prompt_type == "text") {
-          # Get all prompts with non-empty text (read directly from inputs)
-          active_prompts <- Filter(function(p) nchar(p$text) > 0, get_prompt_texts())
-          if (length(active_prompts) == 0) {
-            rv$status <- "Enter at least one text description."
-            rv$status_type <- "warning"
-            return()
-          }
+      result <- tryCatch(
+        {
+          if (input$prompt_type == "text") {
+            # Get all prompts with non-empty text (read directly from inputs)
+            active_prompts <- Filter(
+              function(p) nchar(p$text) > 0,
+              get_prompt_texts()
+            )
+            if (length(active_prompts) == 0) {
+              rv$status <- "Enter at least one text description."
+              rv$status_type <- "warning"
+              return()
+            }
 
-          # Run detection for each prompt and combine results
-          all_results <- list()
-          for (p in active_prompts) {
-            rv$status <- sprintf("Detecting '%s'...", p$text)
-            # Build args list, merging with user-provided detect_args
+            # Run detection for each prompt and combine results
+            all_results <- list()
+            for (p in active_prompts) {
+              rv$status <- sprintf("Detecting '%s'...", p$text)
+              # Build args list, merging with user-provided detect_args
+              call_args <- c(
+                list(
+                  bbox = bbox,
+                  text = p$text,
+                  source = source,
+                  zoom = ext_zoom,
+                  threshold = input$threshold,
+                  chunked = TRUE
+                ),
+                detect_args
+              )
+              det <- do.call(sam_detect, call_args)
+              if (!is.null(det)) {
+                det_sf <- sam_as_sf(det)
+                if (!is.null(det_sf) && nrow(det_sf) > 0) {
+                  det_sf$prompt <- p$text
+                  det_sf$prompt_color <- p$color
+                  all_results <- c(all_results, list(det_sf))
+                }
+              }
+            }
+
+            if (length(all_results) == 0) {
+              return(NULL)
+            }
+
+            # Combine all results - store as custom result
+            combined_sf <- do.call(rbind, all_results)
+            # Return a list with the combined sf for special handling
+            list(combined_sf = combined_sf, prompts = active_prompts)
+          } else if (input$prompt_type == "exemplar") {
+            drawn <- mapgl::get_drawn_features(get_proxy())
+            if (is.null(drawn) || nrow(drawn) == 0) {
+              rv$status <- "Draw a rectangle around an example first."
+              rv$status_type <- "warning"
+              return()
+            }
+            # Exemplar needs imagery first
+            rv$status <- "Downloading imagery..."
+            img_path <- get_imagery(
+              bbox = bbox,
+              source = source,
+              zoom = ext_zoom
+            )
+            rv$image_path <- img_path
             call_args <- c(
               list(
-                bbox = bbox,
-                text = p$text,
-                source = source,
-                zoom = ext_zoom,
-                threshold = input$threshold,
-                chunked = TRUE
+                image = img_path,
+                exemplar = drawn[1, ],
+                threshold = input$threshold
               ),
               detect_args
             )
-            det <- do.call(sam_detect, call_args)
-            if (!is.null(det)) {
-              det_sf <- sam_as_sf(det)
-              if (!is.null(det_sf) && nrow(det_sf) > 0) {
-                det_sf$prompt <- p$text
-                det_sf$prompt_color <- p$color
-                all_results <- c(all_results, list(det_sf))
-              }
+            do.call(sam_detect, call_args)
+          } else if (input$prompt_type == "points") {
+            if (length(rv$points) == 0) {
+              rv$status <- "Click to add some points first."
+              rv$status_type <- "warning"
+              return()
             }
+            # Points need imagery first
+            rv$status <- "Downloading imagery..."
+            img_path <- get_imagery(
+              bbox = bbox,
+              source = source,
+              zoom = ext_zoom
+            )
+            rv$image_path <- img_path
+            coords <- do.call(
+              rbind,
+              lapply(rv$points, function(p) c(p$lng, p$lat))
+            )
+            labels <- sapply(rv$points, function(p) p$label)
+            pts_sf <- sf::st_as_sf(
+              data.frame(x = coords[, 1], y = coords[, 2]),
+              coords = c("x", "y"),
+              crs = 4326
+            )
+            call_args <- c(
+              list(
+                image = img_path,
+                points = pts_sf,
+                labels = labels,
+                threshold = input$threshold
+              ),
+              detect_args
+            )
+            do.call(sam_detect, call_args)
           }
-
-          if (length(all_results) == 0) {
-            return(NULL)
-          }
-
-          # Combine all results - store as custom result
-          combined_sf <- do.call(rbind, all_results)
-          # Return a list with the combined sf for special handling
-          list(combined_sf = combined_sf, prompts = active_prompts)
-
-        } else if (input$prompt_type == "exemplar") {
-          drawn <- mapgl::get_drawn_features(get_proxy())
-          if (is.null(drawn) || nrow(drawn) == 0) {
-            rv$status <- "Draw a rectangle around an example first."
-            rv$status_type <- "warning"
-            return()
-          }
-          # Exemplar needs imagery first
-          rv$status <- "Downloading imagery..."
-          img_path <- get_imagery(bbox = bbox, source = source, zoom = ext_zoom)
-          rv$image_path <- img_path
-          call_args <- c(
-            list(
-              image = img_path,
-              exemplar = drawn[1, ],
-              threshold = input$threshold
-            ),
-            detect_args
-          )
-          do.call(sam_detect, call_args)
-
-        } else if (input$prompt_type == "points") {
-          if (length(rv$points) == 0) {
-            rv$status <- "Click to add some points first."
-            rv$status_type <- "warning"
-            return()
-          }
-          # Points need imagery first
-          rv$status <- "Downloading imagery..."
-          img_path <- get_imagery(bbox = bbox, source = source, zoom = ext_zoom)
-          rv$image_path <- img_path
-          coords <- do.call(rbind, lapply(rv$points, function(p) c(p$lng, p$lat)))
-          labels <- sapply(rv$points, function(p) p$label)
-          pts_sf <- sf::st_as_sf(
-            data.frame(x = coords[, 1], y = coords[, 2]),
-            coords = c("x", "y"),
-            crs = 4326
-          )
-          call_args <- c(
-            list(
-              image = img_path,
-              points = pts_sf,
-              labels = labels,
-              threshold = input$threshold
-            ),
-            detect_args
-          )
-          do.call(sam_detect, call_args)
+        },
+        error = function(e) {
+          rv$status <- paste("Detection error:", e$message)
+          rv$status_type <- "error"
+          NULL
         }
-      }, error = function(e) {
-        rv$status <- paste("Detection error:", e$message)
-        rv$status_type <- "error"
-        NULL
-      })
+      )
 
       if (is.null(result)) {
         if (rv$status_type != "error") {
@@ -963,18 +1080,21 @@ sam_explore <- function(
       }
 
       # Clear existing layers and legend
-      tryCatch({
-        get_proxy() |>
-          mapgl::clear_layer("detections") |>
-          mapgl::clear_legend()
-      }, error = function(e) NULL)
+      tryCatch(
+        {
+          get_proxy() |>
+            mapgl::clear_layer("detections") |>
+            mapgl::clear_legend()
+        },
+        error = function(e) NULL
+      )
 
       # Handle multi-prompt results (list with combined_sf) vs single geosam
       if (is.list(result) && !is.null(result$combined_sf)) {
         # Multi-prompt text detection
         result_sf <- result$combined_sf
         active_prompts <- result$prompts
-        rv$geosam <- result_sf  # Store sf for export
+        rv$geosam <- result_sf # Store sf for export
 
         if (nrow(result_sf) > 0) {
           # Use match_expr for categorical coloring
@@ -1009,11 +1129,27 @@ sam_explore <- function(
                 legend_title = "Detected Objects",
                 values = prompt_labels,
                 colors = prompt_colors_used,
-                position = "bottom-left"
+                position = "bottom-left",
+                margin_bottom = 60,
+                style = mapgl::legend_style(
+                  background_color = "white",
+                  background_opacity = 0.7,
+                  text_color = "#333",
+                  title_color = "#111",
+                  title_font_weight = "bold",
+                  border_radius = 6,
+                  shadow = TRUE,
+                  shadow_color = "rgba(0,0,0,0.2)",
+                  shadow_size = 4
+                )
               )
           }
 
-          rv$status <- sprintf("Found %d object(s) across %d prompt(s).", nrow(result_sf), length(active_prompts))
+          rv$status <- sprintf(
+            "Found %d object(s) across %d prompt(s).",
+            nrow(result_sf),
+            length(active_prompts)
+          )
           rv$status_type <- "success"
         } else {
           rv$status <- "No objects detected."
