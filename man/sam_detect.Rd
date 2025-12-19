@@ -15,11 +15,15 @@ sam_detect(
   source = "mapbox",
   zoom = 17,
   threshold = 0.5,
-  chunked = "auto"
+  chunked = NULL,
+  min_area = NULL,
+  max_area = NULL
 )
 }
 \arguments{
-\item{image}{Path to a GeoTIFF image, or NULL to download imagery for bbox.}
+\item{image}{Path to a GeoTIFF image, or NULL to download imagery for bbox.
+Large images (>2000 pixels on longest dimension) are automatically
+processed in chunks when using text prompts.}
 
 \item{bbox}{Bounding box for the area of interest. Can be a numeric vector
 \code{c(xmin, ymin, xmax, ymax)} in WGS84, or an sf/sfc object.}
@@ -44,12 +48,19 @@ all similar objects in the image.}
 \item{threshold}{Detection confidence threshold (0-1). Lower values return
 more detections.}
 
-\item{chunked}{Control automatic chunking for large areas. One of:
+\item{chunked}{Control chunking for large areas/images:
 \itemize{
-\item \code{"auto"} (default): Automatically chunk if bbox is large
+\item \code{NULL} (default): Auto-chunk when image >2000px or bbox requires multiple tiles
 \item \code{TRUE}: Force chunked detection
-\item \code{FALSE}: Disable chunking (may reduce accuracy for very large areas)
+\item \code{FALSE}: Disable chunking (may cause memory issues for large images)
 }}
+
+\item{min_area}{Minimum object area in square meters. Objects smaller than
+this are filtered out. For chunked detection, filtering happens during
+processing (better performance). Default NULL (no minimum).}
+
+\item{max_area}{Maximum object area in square meters. Objects larger than
+this are filtered out. Default NULL (no maximum).}
 }
 \value{
 A \code{geosam} object containing detection masks and metadata.
@@ -61,9 +72,10 @@ Main function for object detection using Meta's SAM3 model. Supports text
 prompts, point prompts, box prompts, and exemplar-based detection.
 }
 \details{
-For large areas, detection is automatically chunked to maintain accuracy.
-This means you can pass a large bounding box (e.g., a census tract) and
-get the same detection quality as if you manually checked each viewport.
+For large areas or images, detection is automatically chunked to maintain
+accuracy and avoid memory issues. This means you can pass a large bounding
+box (e.g., a census tract) or a large GeoTIFF file (e.g., an orthoimage)
+and get reliable detection without running out of memory.
 }
 \examples{
 \dontrun{
@@ -79,6 +91,13 @@ result <- sam_detect(
   bbox = c(-118.45, 34.08, -118.40, 34.12),  # ~5km area
   text = "swimming pool",
   zoom = 18
+)
+
+# Large user-provided image - automatically chunked
+result <- sam_detect(
+  image = "large_orthoimage.tif",
+  text = "trees",
+  threshold = 0.3
 )
 
 # Point prompts on existing image

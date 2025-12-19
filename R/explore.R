@@ -11,6 +11,8 @@
 #' @param bbox Initial bounding box as c(xmin, ymin, xmax, ymax) or sf object.
 #'   If provided, map will zoom to this extent.
 #' @param zoom Initial zoom level (default 15).
+#' @param ... Additional arguments passed to `sam_detect()`. Useful for setting
+#'   `min_area`, `max_area`, or other detection parameters.
 #'
 #' @return A geosam object when the user clicks "Done", or NULL if cancelled.
 #'
@@ -39,7 +41,8 @@ sam_explore <- function(
     source = c("mapbox", "esri", "maptiler"),
     center = NULL,
     bbox = NULL,
-    zoom = 15
+    zoom = 15,
+    ...
 ) {
   rlang::check_installed(c("shiny", "mapgl"), reason = "for interactive exploration")
   source <- match.arg(source)
@@ -64,11 +67,15 @@ sam_explore <- function(
     zoom <- max(1, min(18, round(8 - log2(width_deg))))
   }
 
+
+  # Capture extra args for sam_detect
+  detect_args <- list(...)
+
   # Run gadget and return result
   result <- shiny::runGadget(
     app = shiny::shinyApp(
       ui = .explore_ui(source),
-      server = .explore_server(source, center, zoom)
+      server = .explore_server(source, center, zoom, detect_args)
     ),
     viewer = shiny::dialogViewer("geosam", width = 1200, height = 800)
   )
@@ -449,7 +456,14 @@ sam_explore <- function(
       shiny::selectInput(
         "extraction_zoom",
         label = NULL,
-        choices = c("16 (regional)" = "16", "17 (local)" = "17", "18 (detailed)" = "18"),
+        choices = c(
+          "14 (wide area)" = "14",
+          "15 (regional)" = "15",
+          "16 (neighborhood)" = "16",
+          "17 (local)" = "17",
+          "18 (detailed)" = "18",
+          "19 (fine detail)" = "19"
+        ),
         selected = "17"
       ),
       shiny::div(
@@ -484,7 +498,7 @@ sam_explore <- function(
 
 
 #' @noRd
-.explore_server <- function(source, initial_center, initial_zoom) {
+.explore_server <- function(source, initial_center, initial_zoom, detect_args = list()) {
   function(input, output, session) {
     # Color palette for prompts
     prompt_colors <- c("#facc15", "#3b82f6", "#ef4444", "#22c55e", "#a855f7", "#f97316")
@@ -852,14 +866,19 @@ sam_explore <- function(
           all_results <- list()
           for (p in active_prompts) {
             rv$status <- sprintf("Detecting '%s'...", p$text)
-            det <- sam_detect(
-              bbox = bbox,
-              text = p$text,
-              source = source,
-              zoom = ext_zoom,
-              threshold = input$threshold,
-              chunked = TRUE
+            # Build args list, merging with user-provided detect_args
+            call_args <- c(
+              list(
+                bbox = bbox,
+                text = p$text,
+                source = source,
+                zoom = ext_zoom,
+                threshold = input$threshold,
+                chunked = TRUE
+              ),
+              detect_args
             )
+            det <- do.call(sam_detect, call_args)
             if (!is.null(det)) {
               det_sf <- sam_as_sf(det)
               if (!is.null(det_sf) && nrow(det_sf) > 0) {
@@ -890,11 +909,15 @@ sam_explore <- function(
           rv$status <- "Downloading imagery..."
           img_path <- get_imagery(bbox = bbox, source = source, zoom = ext_zoom)
           rv$image_path <- img_path
-          sam_detect(
-            image = img_path,
-            exemplar = drawn[1, ],
-            threshold = input$threshold
+          call_args <- c(
+            list(
+              image = img_path,
+              exemplar = drawn[1, ],
+              threshold = input$threshold
+            ),
+            detect_args
           )
+          do.call(sam_detect, call_args)
 
         } else if (input$prompt_type == "points") {
           if (length(rv$points) == 0) {
@@ -913,12 +936,16 @@ sam_explore <- function(
             coords = c("x", "y"),
             crs = 4326
           )
-          sam_detect(
-            image = img_path,
-            points = pts_sf,
-            labels = labels,
-            threshold = input$threshold
+          call_args <- c(
+            list(
+              image = img_path,
+              points = pts_sf,
+              labels = labels,
+              threshold = input$threshold
+            ),
+            detect_args
           )
+          do.call(sam_detect, call_args)
         }
       }, error = function(e) {
         rv$status <- paste("Detection error:", e$message)
