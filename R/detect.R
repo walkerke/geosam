@@ -3,11 +3,14 @@
 #' Main function for object detection using Meta's SAM3 model. Supports text
 #' prompts, point prompts, box prompts, and exemplar-based detection.
 #'
-#' For large areas, detection is automatically chunked to maintain accuracy.
-#' This means you can pass a large bounding box (e.g., a census tract) and
-#' get the same detection quality as if you manually checked each viewport.
+#' For large areas or images, detection is automatically chunked to maintain
+#' accuracy and avoid memory issues. This means you can pass a large bounding
+#' box (e.g., a census tract) or a large GeoTIFF file (e.g., an orthoimage)
+#' and get reliable detection without running out of memory.
 #'
 #' @param image Path to a GeoTIFF image, or NULL to download imagery for bbox.
+#'   Large images (>2000 pixels on longest dimension) are automatically
+#'   processed in chunks when using text prompts.
 #' @param bbox Bounding box for the area of interest. Can be a numeric vector
 #'   `c(xmin, ymin, xmax, ymax)` in WGS84, or an sf/sfc object.
 #' @param text Text prompt describing objects to detect (e.g., "swimming pool",
@@ -22,11 +25,16 @@
 #' @param zoom Tile zoom level for imagery download (17-19 recommended).
 #' @param threshold Detection confidence threshold (0-1). Lower values return
 #'   more detections.
-#' @param chunked Control automatic chunking for large areas. One of:
-#'
-#'   - `"auto"` (default): Automatically chunk if bbox is large
+#' @param chunked Control chunking for large areas/images:
+#'   - `NULL` (default): Auto-chunk when image >2000px or bbox requires multiple tiles
 #'   - `TRUE`: Force chunked detection
-#'   - `FALSE`: Disable chunking (may reduce accuracy for very large areas)
+#'   - `FALSE`: Disable chunking (may cause memory issues for large images)
+#'
+#' @param min_area Minimum object area in square meters. Objects smaller than
+#'   this are filtered out. For chunked detection, filtering happens during
+#'   processing (better performance). Default NULL (no minimum).
+#' @param max_area Maximum object area in square meters. Objects larger than
+#'   this are filtered out. Default NULL (no maximum).
 #'
 #' @return A `geosam` object containing detection masks and metadata.
 #'   Use `sam_as_sf()` to extract polygons, `sam_filter()` to filter by area/score.
@@ -48,6 +56,13 @@
 #'   bbox = c(-118.45, 34.08, -118.40, 34.12),  # ~5km area
 #'   text = "swimming pool",
 #'   zoom = 18
+#' )
+#'
+#' # Large user-provided image - automatically chunked
+#' result <- sam_detect(
+#'   image = "large_orthoimage.tif",
+#'   text = "trees",
+#'   threshold = 0.3
 #' )
 #'
 #' # Point prompts on existing image
@@ -79,7 +94,9 @@ sam_detect <- function(
     source = "mapbox",
     zoom = 17,
     threshold = 0.5,
-    chunked = "auto"
+    chunked = NULL,
+    min_area = NULL,
+    max_area = NULL
 ) {
   # Validate inputs
   .ensure_python()
@@ -110,16 +127,17 @@ sam_detect <- function(
   }
 
   # Check if chunked detection should be used
-  # Only applies when: downloading imagery + text prompt + chunked enabled
+  # Only applies when: downloading imagery + text prompt + chunked not disabled
   use_chunked <- FALSE
   if (is.null(image) && !is.null(text) && !is.null(bbox)) {
-    if (identical(chunked, TRUE)) {
+    if (isTRUE(chunked)) {
       use_chunked <- TRUE
-    } else if (identical(chunked, "auto")) {
-      # Check if bbox is large enough to need chunking
+    } else if (is.null(chunked)) {
+      # Auto: check if bbox is large enough to need chunking
       tile_bboxes <- .split_bbox_for_detection(bbox, zoom, source)
       use_chunked <- length(tile_bboxes) > 1
     }
+    # chunked = FALSE disables chunking
   }
 
   # Route to chunked detection if needed
@@ -129,7 +147,9 @@ sam_detect <- function(
       text = text,
       source = source,
       zoom = zoom,
-      threshold = threshold
+      threshold = threshold,
+      min_area = min_area,
+      max_area = max_area
     ))
   }
 
@@ -148,6 +168,26 @@ sam_detect <- function(
   # Verify image exists
   if (!file.exists(image)) {
     cli::cli_abort("Image file not found: {image}")
+  }
+
+  # Check if chunked detection should be used for user-provided images
+  # Only applies to text prompts currently
+  if (!is.null(text) && !isFALSE(chunked)) {
+    img_rast <- terra::rast(image)
+    img_width <- terra::ncol(img_rast)
+    img_height <- terra::nrow(img_rast)
+    max_dim <- max(img_width, img_height)
+
+    # Use chunked detection for large images
+    if (isTRUE(chunked) || (is.null(chunked) && max_dim > 2000)) {
+      return(.sam_detect_chunked_file(
+        image_path = image,
+        text = text,
+        threshold = threshold,
+        min_area = min_area,
+        max_area = max_area
+      ))
+    }
   }
 
   # Get Python module
@@ -334,9 +374,12 @@ sam_is_loaded <- function() {
 #' @param source Imagery source
 #' @param zoom Zoom level
 #' @param threshold Detection threshold
+#' @param min_area Minimum area in square meters (filters during detection)
+#' @param max_area Maximum area in square meters (filters during detection)
 #' @return A geosam object with merged results
 #' @noRd
-.sam_detect_chunked <- function(bbox, text, source, zoom, threshold) {
+.sam_detect_chunked <- function(bbox, text, source, zoom, threshold,
+                                 min_area = NULL, max_area = NULL) {
  .ensure_python()
 
   # Step 1: Download ALL imagery at once
@@ -458,12 +501,13 @@ sam_is_loaded <- function() {
 
         if (result$count > 0) {
           # Convert masks to sf with correct georeferencing
+          # Apply size filtering during conversion (early filtering)
           chunk_sf <- .masks_to_sf(
             masks = result$masks,
             scores = as.numeric(result$scores),
             template_raster = chunk_path,
-            min_area_m2 = 0,
-            max_area_m2 = Inf
+            min_area_m2 = min_area %||% 0,
+            max_area_m2 = max_area %||% Inf
           )
 
           if (!is.null(chunk_sf) && nrow(chunk_sf) > 0) {
@@ -475,6 +519,9 @@ sam_is_loaded <- function() {
 
         # Clean up chunk file
         unlink(chunk_path)
+
+        # Clear GPU/MPS cache after each tile to prevent memory buildup
+        module$clear_cache()
 
       }, error = function(e) {
         cli::cli_alert_warning("Chunk {tile_num} failed: {e$message}")
@@ -510,6 +557,244 @@ sam_is_loaded <- function() {
       action = "chunked_detection",
       n_tiles = n_tiles,
       grid = c(tiles_x, tiles_y)
+    ))
+  )
+
+  result$sf_result <- combined_sf
+  result
+}
+
+
+#' Chunked detection for user-provided large images
+#'
+#' Internal function that splits a large user-provided image into chunks
+#' and runs detection on each chunk to avoid memory issues. Uses overlap
+#' to reduce boundary artifacts.
+#'
+#' @param image_path Path to the GeoTIFF image
+#' @param text Text prompt
+#' @param threshold Detection threshold
+#' @param target_size Target size for each chunk in pixels (before overlap)
+#' @param overlap Overlap in pixels on each side to reduce boundary artifacts
+#' @param min_area Minimum area in square meters (filters during detection)
+#' @param max_area Maximum area in square meters (filters during detection)
+#' @return A geosam object with merged results
+#' @noRd
+.sam_detect_chunked_file <- function(image_path, text, threshold,
+                                      target_size = 1000, overlap = 128,
+                                      min_area = NULL, max_area = NULL) {
+  .ensure_python()
+
+  image_path <- normalizePath(image_path)
+
+  # Get image dimensions without loading full raster into memory
+  img_info <- terra::rast(image_path)
+  img_width <- terra::ncol(img_info)
+  img_height <- terra::nrow(img_info)
+  full_ext <- terra::ext(img_info)
+  img_crs <- terra::crs(img_info)
+  xres <- terra::xres(img_info)
+  yres <- terra::yres(img_info)
+
+  # Calculate detection grid based on image size
+  tiles_x <- ceiling(img_width / target_size)
+  tiles_y <- ceiling(img_height / target_size)
+  n_tiles <- tiles_x * tiles_y
+
+  # If only 1 tile needed, just run normal detection
+  if (n_tiles == 1) {
+    cli::cli_alert_info("Running SAM3 detection...")
+    module <- .get_module()
+    img_array <- .read_image_array(image_path)
+
+    result <- module$detect_text(
+      img_array = img_array,
+      text_prompt = text,
+      threshold = threshold
+    )
+
+    if (result$count == 0) {
+      cli::cli_alert_info("No objects detected.")
+      return(NULL)
+    }
+
+    cli::cli_alert_success("Detected {result$count} object{?s}.")
+
+    return(new_geosam(
+      image_path = image_path,
+      masks = result$masks,
+      scores = as.numeric(result$scores),
+      prompt = list(type = "text", value = text),
+      extent = as.vector(full_ext),
+      crs = terra::crs(img_info, proj = TRUE),
+      source = NULL,
+      history = list()
+    ))
+  }
+
+  cli::cli_alert_info(
+    "Large image ({img_width}x{img_height}). Processing in {n_tiles} chunks..."
+  )
+
+  # Pre-load model
+  if (!sam_is_loaded()) {
+    sam_load()
+  }
+
+  module <- .get_module()
+
+  # Calculate chunk boundaries in pixels (core area without overlap)
+  chunk_width <- ceiling(img_width / tiles_x)
+  chunk_height <- ceiling(img_height / tiles_y)
+
+  # Process each chunk with progress bar
+  all_polygons <- list()
+  tile_num <- 0
+
+  cli::cli_progress_bar(
+    total = n_tiles,
+    format = "Detecting objects [{cli::pb_current}/{cli::pb_total}] {cli::pb_percent}"
+  )
+
+  for (j in seq_len(tiles_y)) {
+    for (i in seq_len(tiles_x)) {
+      tile_num <- tile_num + 1
+      cli::cli_progress_update()
+
+      # Calculate CORE pixel bounds for this chunk (1-indexed)
+      # This is the area we'll keep polygons from
+      core_x_start <- (i - 1) * chunk_width + 1
+      core_x_end <- min(i * chunk_width, img_width)
+      core_y_start <- (j - 1) * chunk_height + 1
+      core_y_end <- min(j * chunk_height, img_height)
+
+      # Calculate EXTENDED pixel bounds with overlap (for detection)
+      ext_x_start <- max(1, core_x_start - overlap)
+      ext_x_end <- min(img_width, core_x_end + overlap)
+      ext_y_start <- max(1, core_y_start - overlap)
+      ext_y_end <- min(img_height, core_y_end + overlap)
+
+      tryCatch({
+        # Convert EXTENDED pixel bounds to geographic extent for detection
+        chunk_xmin <- as.numeric(full_ext[1]) + (ext_x_start - 1) * xres
+        chunk_xmax <- as.numeric(full_ext[1]) + ext_x_end * xres
+        chunk_ymax <- as.numeric(full_ext[4]) - (ext_y_start - 1) * yres
+        chunk_ymin <- as.numeric(full_ext[4]) - ext_y_end * yres
+
+        chunk_ext <- terra::ext(chunk_xmin, chunk_xmax, chunk_ymin, chunk_ymax)
+
+        # Convert CORE pixel bounds to geographic extent for filtering
+        core_xmin <- as.numeric(full_ext[1]) + (core_x_start - 1) * xres
+        core_xmax <- as.numeric(full_ext[1]) + core_x_end * xres
+        core_ymax <- as.numeric(full_ext[4]) - (core_y_start - 1) * yres
+        core_ymin <- as.numeric(full_ext[4]) - core_y_end * yres
+
+        # Crop to chunk extent
+        # terra::crop() is memory-efficient for GeoTIFFs (reads only needed data)
+        chunk_rast <- terra::crop(img_info, chunk_ext)
+
+        # Write chunk to temp file for coordinate reference
+        chunk_path <- tempfile(fileext = ".tif")
+        terra::writeRaster(chunk_rast, chunk_path, datatype = "INT1U")
+
+        # Read as array for detection
+        img_array <- .read_image_array(chunk_path)
+
+        # Run detection on chunk (includes overlap area)
+        result <- module$detect_text(
+          img_array = img_array,
+          text_prompt = text,
+          threshold = threshold
+        )
+
+        if (result$count > 0) {
+          # Convert masks to sf with correct georeferencing
+          # Apply size filtering during conversion (early filtering)
+          chunk_sf <- .masks_to_sf(
+            masks = result$masks,
+            scores = as.numeric(result$scores),
+            template_raster = chunk_path,
+            min_area_m2 = min_area %||% 0,
+            max_area_m2 = max_area %||% Inf
+          )
+
+          if (!is.null(chunk_sf) && nrow(chunk_sf) > 0) {
+            # Filter to keep only polygons whose centroid is in the CORE area
+            # This ensures each object is only counted once
+            # Note: chunk_sf is already in WGS84 (transformed by .masks_to_sf)
+            # so we need to transform core bounds to WGS84 as well
+            core_coords <- c(xmin = core_xmin, ymin = core_ymin,
+                             xmax = core_xmax, ymax = core_ymax)
+            core_poly <- sf::st_as_sfc(sf::st_bbox(core_coords))
+            sf::st_crs(core_poly) <- sf::st_crs(img_crs)
+            core_poly_wgs84 <- sf::st_transform(core_poly, 4326)
+            core_bbox_wgs84 <- sf::st_bbox(core_poly_wgs84)
+
+            centroids <- suppressWarnings(sf::st_centroid(chunk_sf))
+            centroid_coords <- sf::st_coordinates(centroids)
+
+            in_core <- centroid_coords[, "X"] >= core_bbox_wgs84["xmin"] &
+                       centroid_coords[, "X"] <= core_bbox_wgs84["xmax"] &
+                       centroid_coords[, "Y"] >= core_bbox_wgs84["ymin"] &
+                       centroid_coords[, "Y"] <= core_bbox_wgs84["ymax"]
+
+            chunk_sf <- chunk_sf[in_core, ]
+
+            if (nrow(chunk_sf) > 0) {
+              # Ensure consistent columns for combining
+              chunk_sf <- chunk_sf[, c("score", "area_m2", "geometry")]
+              all_polygons[[length(all_polygons) + 1]] <- chunk_sf
+            }
+          }
+        }
+
+        # Clean up chunk file
+        unlink(chunk_path)
+
+        # Clear GPU/MPS cache after each tile to prevent memory buildup
+        module$clear_cache()
+
+      }, error = function(e) {
+        cli::cli_alert_warning("Chunk {tile_num} failed: {e$message}")
+      })
+    }
+  }
+
+  cli::cli_progress_done()
+
+  # Merge results
+  if (length(all_polygons) == 0) {
+    cli::cli_alert_info("No objects detected.")
+    return(NULL)
+  }
+
+  combined_sf <- do.call(rbind, all_polygons)
+
+  # Merge polygons that touch at tile boundaries
+  n_before <- nrow(combined_sf)
+  combined_sf <- .deduplicate_tile_boundaries(combined_sf)
+  n_after <- nrow(combined_sf)
+
+  if (n_before > n_after) {
+    cli::cli_alert_info("Merged {n_before - n_after} boundary polygons.")
+  }
+
+  cli::cli_alert_success("Detected {n_after} object{?s} across {n_tiles} chunks.")
+
+  # Create geosam object
+  result <- new_geosam(
+    image_path = image_path,
+    masks = list(),  # Masks not stored for chunked (different sizes per chunk)
+    scores = combined_sf$score,
+    prompt = list(type = "text", value = text),
+    extent = as.vector(full_ext),
+    crs = terra::crs(img_info, proj = TRUE),
+    source = NULL,
+    history = list(list(
+      action = "chunked_detection",
+      n_tiles = n_tiles,
+      grid = c(tiles_x, tiles_y),
+      overlap = overlap
     ))
   )
 

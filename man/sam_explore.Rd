@@ -8,7 +8,8 @@ sam_explore(
   source = c("mapbox", "esri", "maptiler"),
   center = NULL,
   bbox = NULL,
-  zoom = 15
+  zoom = 15,
+  ...
 )
 }
 \arguments{
@@ -25,6 +26,9 @@ sam_explore(
 If provided, map will zoom to this extent.}
 
 \item{zoom}{Initial zoom level (default 15).}
+
+\item{...}{Additional arguments passed to \code{sam_detect()}. Useful for setting
+\code{min_area}, \code{max_area}, or other detection parameters.}
 }
 \value{
 A geosam object when the user clicks "Done", or NULL if cancelled.

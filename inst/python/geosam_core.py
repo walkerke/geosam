@@ -407,6 +407,26 @@ def detect_points(
     }
 
 
+def clear_cache() -> None:
+    """
+    Clear GPU/MPS memory cache.
+
+    Call this after processing each tile in chunked detection to prevent
+    memory buildup across tiles.
+    """
+    import gc
+    gc.collect()
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    # MPS doesn't have empty_cache, but gc.collect helps
+    if torch.backends.mps.is_available():
+        # Force synchronization to ensure operations complete
+        if _DEVICE == "mps":
+            torch.mps.synchronize()
+
+
 def check_environment() -> Dict[str, Any]:
     """
     Check the Python environment and available features.
