@@ -968,17 +968,20 @@ sam_explore <- function(
               return()
             }
 
+            # Download imagery once for all prompts
+            rv$status <- "Downloading imagery..."
+            img_path <- get_imagery(bbox = bbox, source = source, zoom = ext_zoom)
+
             # Run detection for each prompt and combine results
             all_results <- list()
             for (p in active_prompts) {
               rv$status <- sprintf("Detecting '%s'...", p$text)
               # Build args list, merging with user-provided detect_args
+              # Use downloaded image instead of bbox to avoid re-downloading
               call_args <- c(
                 list(
-                  bbox = bbox,
+                  image = img_path,
                   text = p$text,
-                  source = source,
-                  zoom = ext_zoom,
                   threshold = input$threshold,
                   chunked = TRUE
                 ),
