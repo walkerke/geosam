@@ -1,6 +1,6 @@
 Package: geosam
 Title: Geospatial Image Segmentation with SAM3
-Version: 0.1.0
+Version: 0.1.0.9000
 Date: 2025-12-30
 Authors@R:
     person("Kyle", "Walker", , "kyle@walker-data.com", role = c("aut", "cre"))
