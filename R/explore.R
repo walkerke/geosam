@@ -775,7 +775,7 @@ sam_explore <- function(
             return("-")
           }
 
-          # Calculate approximate area in km²
+          # Calculate approximate area in km\u00b2
           lat_mid <- (bounds$ymax + bounds$ymin) / 2
           width_km <- (bounds$xmax - bounds$xmin) *
             111.32 *
@@ -784,11 +784,11 @@ sam_explore <- function(
           area_km2 <- width_km * height_km
 
           if (area_km2 < 1) {
-            sprintf("%.0f m²", area_km2 * 1e6)
+            sprintf("%.0f m\u00b2", area_km2 * 1e6)
           } else if (area_km2 < 100) {
-            sprintf("%.1f km²", area_km2)
+            sprintf("%.1f km\u00b2", area_km2)
           } else {
-            sprintf("%.0f km²", area_km2)
+            sprintf("%.0f km\u00b2", area_km2)
           }
         },
         error = function(e) "-"

@@ -948,7 +948,7 @@ sam_explore_image <- function(image) {
     # Clear drawing
     shiny::observeEvent(input$clear_drawing, {
       get_proxy() |>
-        mapgl::clear_draw()
+        mapgl::clear_drawn_features()
       rv$status <- "Box cleared."
       rv$status_type <- "normal"
     })

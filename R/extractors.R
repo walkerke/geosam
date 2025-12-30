@@ -220,7 +220,7 @@ sam_as_raster <- function(x, combined = FALSE) {
 
   if (combined) {
     # Union all masks into single layer
-    result <- Reduce(function(a, b) terra::max(a, b), rast_list)
+    result <- Reduce(function(a, b) max(a, b), rast_list)
     names(result) <- "combined_mask"
     result
   } else {
