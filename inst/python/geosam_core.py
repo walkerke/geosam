@@ -209,11 +209,10 @@ def detect_boxes(
     with torch.no_grad():
         outputs = _TRACKER_MODEL(**inputs)
 
-    # Post-process masks
+    # Post-process masks to original size using the processor
     masks = _TRACKER_PROCESSOR.post_process_masks(
-        outputs.pred_masks,
-        inputs["original_sizes"],
-        inputs["reshaped_input_sizes"]
+        outputs.pred_masks.cpu(),
+        inputs["original_sizes"]
     )
 
     # masks shape: (batch, num_boxes, num_masks_per_box, H, W)

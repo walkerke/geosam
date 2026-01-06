@@ -210,7 +210,7 @@ sam_image <- function(
 #' Convert various box formats to a consistent matrix format.
 #'
 #' @param boxes Matrix, data.frame, or vector of box coordinates
-#' @return List of [xmin, ymin, xmax, ymax] vectors for Python
+#' @return List of `[xmin, ymin, xmax, ymax]` vectors for Python
 #' @noRd
 .normalize_boxes <- function(boxes) {
   if (is.data.frame(boxes)) {
