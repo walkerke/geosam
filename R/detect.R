@@ -487,7 +487,9 @@ sam_is_loaded <- function() {
 
         # Write chunk to temp file for coordinate reference
         chunk_path <- tempfile(fileext = ".tif")
-        terra::writeRaster(chunk_rast, chunk_path, datatype = "INT1U")
+        suppressWarnings({
+          terra::writeRaster(chunk_rast, chunk_path, datatype = "INT1U")
+        })
 
         # Read as array for detection
         img_array <- .read_image_array(chunk_path)
@@ -695,7 +697,9 @@ sam_is_loaded <- function() {
 
         # Write chunk to temp file for coordinate reference
         chunk_path <- tempfile(fileext = ".tif")
-        terra::writeRaster(chunk_rast, chunk_path, datatype = "INT1U")
+        suppressWarnings({
+          terra::writeRaster(chunk_rast, chunk_path, datatype = "INT1U")
+        })
 
         # Read as array for detection
         img_array <- .read_image_array(chunk_path)
@@ -726,8 +730,10 @@ sam_is_loaded <- function() {
             core_coords <- c(xmin = core_xmin, ymin = core_ymin,
                              xmax = core_xmax, ymax = core_ymax)
             core_poly <- sf::st_as_sfc(sf::st_bbox(core_coords))
-            sf::st_crs(core_poly) <- sf::st_crs(img_crs)
-            core_poly_wgs84 <- sf::st_transform(core_poly, 4326)
+            suppressWarnings({
+              sf::st_crs(core_poly) <- sf::st_crs(img_crs)
+            })
+            core_poly_wgs84 <- sf::st_transform(core_poly, "+proj=longlat +datum=WGS84 +no_defs")
             core_bbox_wgs84 <- sf::st_bbox(core_poly_wgs84)
 
             centroids <- suppressWarnings(sf::st_centroid(chunk_sf))
@@ -815,8 +821,10 @@ sam_is_loaded <- function() {
     return(sf_obj)
   }
 
+
   # Transform to a projected CRS for accurate distance calculations
-  sf_proj <- sf::st_transform(sf_obj, 3857)
+  # Use PROJ4 string to avoid PROJ database lookup issues (EPSG:3857)
+  sf_proj <- sf::st_transform(sf_obj, "+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs")
 
   # Find polygons that touch or nearly touch (within 1m buffer)
   buffered <- sf::st_buffer(sf_proj, 1)
@@ -877,7 +885,7 @@ sam_is_loaded <- function() {
       merged_sf <- sf::st_sf(
         score = max_score,
         area_m2 = new_area,
-        geometry = sf::st_transform(merged_geom, 4326)
+        geometry = sf::st_transform(merged_geom, "+proj=longlat +datum=WGS84 +no_defs")
       )
 
       result_list[[length(result_list) + 1]] <- merged_sf

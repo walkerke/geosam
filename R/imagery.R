@@ -43,7 +43,7 @@ get_imagery <- function(
 
   # Convert bbox if sf object
  if (inherits(bbox, c("sf", "sfc"))) {
-    bbox <- sf::st_bbox(sf::st_transform(bbox, 4326))
+    bbox <- sf::st_bbox(sf::st_transform(bbox, "+proj=longlat +datum=WGS84 +no_defs"))
     bbox <- as.numeric(bbox[c("xmin", "ymin", "xmax", "ymax")])
   } else if (inherits(bbox, "bbox")) {
     bbox <- as.numeric(bbox[c("xmin", "ymin", "xmax", "ymax")])
@@ -272,12 +272,19 @@ get_imagery <- function(
   nw_merc <- .lonlat_to_mercator(nw_lonlat[1], nw_lonlat[2])
   se_merc <- .lonlat_to_mercator(se_lonlat[1], se_lonlat[2])
 
+
   # Set extent and CRS
+  # Use PROJ4 string directly to avoid PROJ database lookup issues (EPSG:3857)
+  # Suppress warnings from PROJ database lookups (benign - CRS is set correctly)
   terra::ext(r) <- terra::ext(nw_merc[1], se_merc[1], se_merc[2], nw_merc[2])
-  terra::crs(r) <- "EPSG:3857"
+  suppressWarnings({
+    terra::crs(r) <- "+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs"
+  })
 
   # Write GeoTIFF
-  terra::writeRaster(r, output, overwrite = TRUE, datatype = "INT1U")
+  suppressWarnings({
+    terra::writeRaster(r, output, overwrite = TRUE, datatype = "INT1U")
+  })
 
   # Clean up
   unlink(tmp_png)

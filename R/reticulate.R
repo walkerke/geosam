@@ -109,9 +109,12 @@
     cli::cli_abort("Input must be an sf object or bbox.")
   }
 
+
   # Transform to WGS84 if needed
+  # Use PROJ4 string to avoid PROJ database lookup issues
+
   if (!is.na(sf::st_crs(x)) && sf::st_crs(x)$epsg != 4326) {
-    x <- sf::st_transform(x, 4326)
+    x <- sf::st_transform(x, "+proj=longlat +datum=WGS84 +no_defs")
   }
 
   geom_type <- unique(sf::st_geometry_type(x))
@@ -260,9 +263,10 @@
     return(NULL)
   }
 
-  # Transform to WGS84 for output
 
-  result <- sf::st_transform(result, 4326)
+  # Transform to WGS84 for output
+  # Use PROJ4 string to avoid PROJ database lookup issues
+  result <- sf::st_transform(result, "+proj=longlat +datum=WGS84 +no_defs")
 
   result
 }
@@ -306,7 +310,7 @@
 #' @param input_crs CRS of input coordinates (default WGS84)
 #' @return List of pixel coordinate pairs (col, row)
 #' @noRd
-.geo_to_pixel <- function(coords, image_path, input_crs = 4326) {
+.geo_to_pixel <- function(coords, image_path, input_crs = "+proj=longlat +datum=WGS84 +no_defs") {
   r <- terra::rast(image_path)
   img_crs <- terra::crs(r)
   ext <- terra::ext(r)
@@ -348,7 +352,7 @@
 #' @param input_crs CRS of input coordinates (default WGS84)
 #' @return List of pixel boxes (xmin, ymin, xmax, ymax in pixels)
 #' @noRd
-.geo_boxes_to_pixel <- function(boxes, image_path, input_crs = 4326) {
+.geo_boxes_to_pixel <- function(boxes, image_path, input_crs = "+proj=longlat +datum=WGS84 +no_defs") {
   r <- terra::rast(image_path)
   img_crs <- terra::crs(r)
   ext <- terra::ext(r)

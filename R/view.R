@@ -537,11 +537,13 @@ sam_view <- function(
 
   # Set CRS from geosam (usually EPSG:3857)
   if (!is.null(x$crs) && x$crs != "") {
-    sf::st_crs(bbox_sf) <- x$crs
+    suppressWarnings({
+      sf::st_crs(bbox_sf) <- x$crs
+    })
   }
 
   # Transform to WGS84 for display
-  bbox_sf <- sf::st_transform(bbox_sf, 4326)
+  bbox_sf <- sf::st_transform(bbox_sf, "+proj=longlat +datum=WGS84 +no_defs")
 
   bbox_sf
 }

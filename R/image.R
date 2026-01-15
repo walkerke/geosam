@@ -927,7 +927,7 @@ sam_explore_image <- function(image) {
             get_proxy() |>
               mapgl::add_markers(
                 data = sf::st_sf(
-                  geometry = sf::st_sfc(sf::st_point(c(click$lng, click$lat)), crs = 4326)
+                  geometry = sf::st_sfc(sf::st_point(c(click$lng, click$lat)), crs = "+proj=longlat +datum=WGS84 +no_defs")
                 ),
                 color = marker_color
               )
@@ -1188,7 +1188,7 @@ sam_explore_image <- function(image) {
     g_flipped
   })
 
-  sf::st_geometry(sf_obj) <- sf::st_sfc(geom_transformed, crs = 4326)
+  sf::st_geometry(sf_obj) <- sf::st_sfc(geom_transformed, crs = "+proj=longlat +datum=WGS84 +no_defs")
   sf_obj
 }
 

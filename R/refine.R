@@ -164,7 +164,7 @@ sam_refine <- function(x, points, labels = NULL) {
       points <- sf::st_as_sf(
         as.data.frame(points[, 1:2]),
         coords = c(1, 2),
-        crs = 4326
+        crs = "+proj=longlat +datum=WGS84 +no_defs"
       )
     }
   }
@@ -403,7 +403,7 @@ sam_merge_edges <- function(x, buffer = 2, by_prompt = TRUE) {
   }
 
   # Transform to projected CRS for accurate distance calculations
-  sf_proj <- sf::st_transform(sf_obj, 3857)
+  sf_proj <- sf::st_transform(sf_obj, "+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs")
 
   # Buffer polygons to find nearby ones
 

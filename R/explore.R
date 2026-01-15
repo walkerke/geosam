@@ -62,7 +62,7 @@ sam_explore <- function(
   # Convert bbox if sf
   if (!is.null(bbox)) {
     if (inherits(bbox, c("sf", "sfc"))) {
-      bbox <- sf::st_bbox(sf::st_transform(bbox, 4326))
+      bbox <- sf::st_bbox(sf::st_transform(bbox, "+proj=longlat +datum=WGS84 +no_defs"))
     }
     center <- c((bbox[1] + bbox[3]) / 2, (bbox[2] + bbox[4]) / 2)
     # Estimate zoom from bbox width
@@ -887,7 +887,7 @@ sam_explore <- function(
               data = sf::st_sf(
                 geometry = sf::st_sfc(
                   sf::st_point(c(click$lng, click$lat)),
-                  crs = 4326
+                  crs = "+proj=longlat +datum=WGS84 +no_defs"
                 )
               ),
               color = marker_color
@@ -1052,7 +1052,7 @@ sam_explore <- function(
             pts_sf <- sf::st_as_sf(
               data.frame(x = coords[, 1], y = coords[, 2]),
               coords = c("x", "y"),
-              crs = 4326
+              crs = "+proj=longlat +datum=WGS84 +no_defs"
             )
             call_args <- c(
               list(
