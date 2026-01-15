@@ -112,9 +112,13 @@
 
   # Transform to WGS84 if needed
   # Use PROJ4 string to avoid PROJ database lookup issues
-
-  if (!is.na(sf::st_crs(x)) && sf::st_crs(x)$epsg != 4326) {
-    x <- sf::st_transform(x, "+proj=longlat +datum=WGS84 +no_defs")
+  crs_x <- sf::st_crs(x)
+  if (!is.na(crs_x)) {
+    epsg <- crs_x$epsg
+    # Transform if EPSG is not 4326 (or if EPSG is NA, meaning non-standard CRS)
+    if (is.na(epsg) || epsg != 4326) {
+      x <- sf::st_transform(x, "+proj=longlat +datum=WGS84 +no_defs")
+    }
   }
 
   geom_type <- unique(sf::st_geometry_type(x))
