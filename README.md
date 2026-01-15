@@ -2,10 +2,10 @@
 
 The **geosam** R package brings Meta's [Segment Anything Model 3 (SAM3)](https://ai.meta.com/sam3/) to R for detecting objects in satellite imagery and photos. Describe what you're looking for in plain text—no training data or model fine-tuning required. The package is inspired by the Python package [segment-geospatial](https://samgeo.gishub.org/) by Qiusheng Wu, and aims to bring similar functionality to R users.
 
-Install the development version from GitHub:
+Install from R-Universe:
 
 ```r
-remotes::install_github("walkerke/geosam")
+install.packages("geosam", repos = "https://walkerke.r-universe.dev")
 ```
 
 Then set up the Python environment:
