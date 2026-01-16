@@ -5,7 +5,7 @@ The **geosam** R package brings Meta's [Segment Anything Model 3 (SAM3)](https:/
 Install from R-Universe:
 
 ```r
-install.packages("geosam", repos = "https://walkerke.r-universe.dev")
+install.packages("geosam", repos = c("https://walkerke.r-universe.dev", "https://cloud.r-project.org"))
 ```
 
 Then set up the Python environment:
