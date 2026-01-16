@@ -9,7 +9,7 @@ prompts, point prompts, box prompts, and exemplar-based detection."><meta proper
 
     <a class="navbar-brand me-2" href="../index.html">geosam</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.0.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -58,7 +58,9 @@ prompts, point prompts, box prompts, and exemplar-based detection.</p>
 <span>  source <span class="op">=</span> <span class="st">"mapbox"</span>,</span>
 <span>  zoom <span class="op">=</span> <span class="fl">17</span>,</span>
 <span>  threshold <span class="op">=</span> <span class="fl">0.5</span>,</span>
-<span>  chunked <span class="op">=</span> <span class="st">"auto"</span></span>
+<span>  chunked <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  min_area <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  max_area <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -67,7 +69,9 @@ prompts, point prompts, box prompts, and exemplar-based detection.</p>
 
 
 <dl><dt id="arg-image">image<a class="anchor" aria-label="anchor" href="#arg-image"></a></dt>
-<dd><p>Path to a GeoTIFF image, or NULL to download imagery for bbox.</p></dd>
+<dd><p>Path to a GeoTIFF image, or NULL to download imagery for bbox.
+Large images (&gt;2000 pixels on longest dimension) are automatically
+processed in chunks when using text prompts.</p></dd>
 
 
 <dt id="arg-bbox">bbox<a class="anchor" aria-label="anchor" href="#arg-bbox"></a></dt>
@@ -112,10 +116,21 @@ more detections.</p></dd>
 
 
 <dt id="arg-chunked">chunked<a class="anchor" aria-label="anchor" href="#arg-chunked"></a></dt>
-<dd><p>Control automatic chunking for large areas. One of:</p><ul><li><p><code>"auto"</code> (default): Automatically chunk if bbox is large</p></li>
+<dd><p>Control chunking for large areas/images:</p><ul><li><p><code>NULL</code> (default): Auto-chunk when image &gt;2000px or bbox requires multiple tiles</p></li>
 <li><p><code>TRUE</code>: Force chunked detection</p></li>
-<li><p><code>FALSE</code>: Disable chunking (may reduce accuracy for very large areas)</p></li>
+<li><p><code>FALSE</code>: Disable chunking (may cause memory issues for large images)</p></li>
 </ul></dd>
+
+
+<dt id="arg-min-area">min_area<a class="anchor" aria-label="anchor" href="#arg-min-area"></a></dt>
+<dd><p>Minimum object area in square meters. Objects smaller than
+this are filtered out. For chunked detection, filtering happens during
+processing (better performance). Default NULL (no minimum).</p></dd>
+
+
+<dt id="arg-max-area">max_area<a class="anchor" aria-label="anchor" href="#arg-max-area"></a></dt>
+<dd><p>Maximum object area in square meters. Objects larger than
+this are filtered out. Default NULL (no maximum).</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -126,9 +141,10 @@ Returns NULL if no objects are detected.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p>For large areas, detection is automatically chunked to maintain accuracy.
-This means you can pass a large bounding box (e.g., a census tract) and
-get the same detection quality as if you manually checked each viewport.</p>
+    <p>For large areas or images, detection is automatically chunked to maintain
+accuracy and avoid memory issues. This means you can pass a large bounding
+box (e.g., a census tract) or a large GeoTIFF file (e.g., an orthoimage)
+and get reliable detection without running out of memory.</p>
     </div>
 
     <div class="section level2">
@@ -146,6 +162,13 @@ get the same detection quality as if you manually checked each viewport.</p>
 <span class="r-in"><span>  bbox <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">118.45</span>, <span class="fl">34.08</span>, <span class="op">-</span><span class="fl">118.40</span>, <span class="fl">34.12</span><span class="op">)</span>,  <span class="co"># ~5km area</span></span></span>
 <span class="r-in"><span>  text <span class="op">=</span> <span class="st">"swimming pool"</span>,</span></span>
 <span class="r-in"><span>  zoom <span class="op">=</span> <span class="fl">18</span></span></span>
+<span class="r-in"><span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Large user-provided image - automatically chunked</span></span></span>
+<span class="r-in"><span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu">sam_detect</span><span class="op">(</span></span></span>
+<span class="r-in"><span>  image <span class="op">=</span> <span class="st">"large_orthoimage.tif"</span>,</span></span>
+<span class="r-in"><span>  text <span class="op">=</span> <span class="st">"trees"</span>,</span></span>
+<span class="r-in"><span>  threshold <span class="op">=</span> <span class="fl">0.3</span></span></span>
 <span class="r-in"><span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Point prompts on existing image</span></span></span>

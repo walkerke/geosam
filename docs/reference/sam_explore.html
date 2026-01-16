@@ -9,7 +9,7 @@ run SAM detection."><meta property="og:image" content="https://walker-data.com/g
 
     <a class="navbar-brand me-2" href="../index.html">geosam</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.0.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -51,7 +51,8 @@ run SAM detection.</p>
 <span>  source <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"mapbox"</span>, <span class="st">"esri"</span>, <span class="st">"maptiler"</span><span class="op">)</span>,</span>
 <span>  center <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  bbox <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  zoom <span class="op">=</span> <span class="fl">15</span></span>
+<span>  zoom <span class="op">=</span> <span class="fl">15</span>,</span>
+<span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -77,6 +78,11 @@ If provided, map will zoom to this extent.</p></dd>
 
 <dt id="arg-zoom">zoom<a class="anchor" aria-label="anchor" href="#arg-zoom"></a></dt>
 <dd><p>Initial zoom level (default 15).</p></dd>
+
+
+<dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
+<dd><p>Additional arguments passed to <code><a href="sam_detect.html">sam_detect()</a></code>. Useful for setting
+<code>min_area</code>, <code>max_area</code>, or other detection parameters.</p></dd>
 
 </dl></div>
     <div class="section level2">

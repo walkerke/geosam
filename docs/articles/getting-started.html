@@ -28,7 +28,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">geosam</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.0.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -79,10 +79,10 @@
 <p>The package is inspired by the Python package <a href="https://samgeo.gishub.org/" class="external-link">segment-geospatial</a> by Qiusheng Wu, and aims to bring similar functionality to R users. geosam offers an R-native API, linking to packages such as terra for spatial workflows and magick for image manipulation. It also includes tools for interactive viewing and extraction with the mapgl R package.</p>
 <section class="level3"><h3 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h3>
-<p>Getting set up with geosam takes a few steps. First, install the package from GitHub:</p>
+<p>Getting set up with geosam takes a few steps. First, install from R-Universe:</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"walkerke/geosam"</span><span class="op">)</span></span></code></pre></div>
-<p>Or:</p>
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="st">"geosam"</span>, repos <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"https://walkerke.r-universe.dev"</span>, <span class="st">"https://cloud.r-project.org"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
+<p>Or, install from source:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://pak.r-lib.org/reference/pak.html" class="external-link">pak</a></span><span class="op">(</span><span class="st">"walkerke/geosam"</span><span class="op">)</span></span></code></pre></div>
 <p>Once installed, load the package then set up a SAM3 Python environment with <code><a href="../reference/geosam_install.html">geosam_install()</a></code>. By default, if run with no arguments, <code><a href="../reference/geosam_install.html">geosam_install()</a></code> will use <strong>uv</strong> for the Python environment.</p>
@@ -182,13 +182,23 @@
 
 ℹ Fetching 12 tiles (4x3)...
 
-✔ Saved imagery to: /var/folders/qm/xbtsglmj2ss91z9fzpz8k6q8ylngb5/T//Rtmphmxw9e/file7c02307be280.tif
+✔ Saved imagery to: /var/folders/qm/xbtsglmj2ss91z9fzpz8k6q8ylngb5/T//RtmpdvPsyt/filea7325eebf2.tif
 
-ℹ Reading image...
+ℹ Large image (2048x1536). Processing in 6 chunks...
 
-ℹ Running SAM3 detection...
+ℹ Loading SAM3 model...
 
-✔ Detected 2 objects.</code></pre>
+✔ SAM3 model loaded.
+
+Detecting objects [2/6]  33%
+
+Detecting objects [3/6]  50%
+
+Detecting objects [5/6]  83%
+
+Detecting objects [6/6] 100%
+
+✔ Detected 2 objects across 6 chunks.</code></pre>
 </div>
 <div class="sourceCode cell-code" id="cb20"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">field</span><span class="op">)</span></span></code></pre></div>
@@ -218,14 +228,14 @@
 <span></span>
 <span><span class="va">field_sf</span></span></code></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>Simple feature collection with 2 features and 3 fields
+<pre><code>Simple feature collection with 2 features and 2 fields
 Geometry type: POLYGON
 Dimension:     XY
-Bounding box:  xmin: -97.3687 ymin: 32.70723 xmax: -97.36656 ymax: 32.7102
-Geodetic CRS:  WGS 84
-      score mask_id                       geometry  area_m2
-1 0.8473608       1 POLYGON ((-97.36773 32.7083... 17715.08
-2 0.8100375       2 POLYGON ((-97.36834 32.7102... 11380.70</code></pre>
+Bounding box:  xmin: -97.3687 ymin: 32.70723 xmax: -97.36657 ymax: 32.71022
+Geodetic CRS:  +proj=longlat +datum=WGS84 +no_defs
+      score  area_m2                       geometry
+1 0.8856184 17298.56 POLYGON ((-97.36768 32.7083...
+2 0.8946797 11335.05 POLYGON ((-97.36829 32.7102...</code></pre>
 </div>
 </div>
 <p>The resulting sf object includes a <code>score</code> column with confidence values (0–1) and an <code>area_m2</code> column with the area of each detection in square meters. From here, you can filter, analyze, or export your detections using standard sf workflows.</p>

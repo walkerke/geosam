@@ -11,13 +11,13 @@ The package is inspired by the Python package [segment-geospatial](https://samge
 
 ### Installation
 
-Getting set up with geosam takes a few steps. First, install the package from GitHub:
+Getting set up with geosam takes a few steps. First, install from R-Universe:
 
 ``` r
-remotes::install_github("walkerke/geosam")
+install.packages("geosam", repos = c("https://walkerke.r-universe.dev", "https://cloud.r-project.org"))
 ```
 
-Or:
+Or, install from source:
 
 ``` r
 pak::pak("walkerke/geosam")

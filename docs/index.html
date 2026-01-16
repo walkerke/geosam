@@ -28,7 +28,7 @@
 
     <a class="navbar-brand me-2" href="index.html">geosam</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.0.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -67,9 +67,9 @@
 </h1>
 </div>
 <p>The <strong>geosam</strong> R package brings Meta’s <a href="https://ai.meta.com/sam3/" class="external-link">Segment Anything Model 3 (SAM3)</a> to R for detecting objects in satellite imagery and photos. Describe what you’re looking for in plain text—no training data or model fine-tuning required. The package is inspired by the Python package <a href="https://samgeo.gishub.org/" class="external-link">segment-geospatial</a> by Qiusheng Wu, and aims to bring similar functionality to R users.</p>
-<p>Install the development version from GitHub:</p>
+<p>Install from R-Universe:</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"walkerke/geosam"</span><span class="op">)</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="st">"geosam"</span>, repos <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"https://walkerke.r-universe.dev"</span>, <span class="st">"https://cloud.r-project.org"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 <p>Then set up the Python environment:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/walkerke/geosam" class="external-link">geosam</a></span><span class="op">)</span></span>
