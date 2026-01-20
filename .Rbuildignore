@@ -5,3 +5,6 @@
 ^vignettes$
 ^\.github$
 ^LICENSE\.md$
+^\.claude$
+^_pkgdown\.yml$
+^examples$

@@ -9,7 +9,8 @@ geosam_install(
   method = c("uv", "virtualenv", "conda"),
   gpu = NULL,
   hf_token = NULL,
-  python_version = "3.12"
+  python_version = "3.12",
+  conda = "auto"
 )
 }
 \arguments{
@@ -25,6 +26,10 @@ auto-detects based on available hardware.}
 Can also be set via the HF_TOKEN environment variable. Required for SAM3.}
 
 \item{python_version}{Python version to use (default: "3.12"). SAM3 requires 3.12+.}
+
+\item{conda}{Path to conda executable. Only used when \code{method = "conda"}.
+If "auto" (default), uses reticulate's default conda. Useful when you have
+multiple conda installations (miniconda, miniforge, anaconda, etc.).}
 }
 \value{
 Invisibly returns TRUE on success.
@@ -58,6 +63,8 @@ pip install uv
 to be installed on your system.
 
 \strong{conda}: Uses conda/miniconda. Slower but handles complex dependencies well.
+If you have multiple conda installations, use the \code{conda} parameter to specify
+which one to use.
 }
 
 \subsection{SAM3 Access}{
@@ -79,5 +86,8 @@ geosam_install(method = "virtualenv")
 
 # Use conda
 geosam_install(method = "conda")
+
+# Use a specific conda installation (e.g., miniforge instead of miniconda)
+geosam_install(method = "conda", conda = "~/miniforge3/bin/conda")
 }
 }

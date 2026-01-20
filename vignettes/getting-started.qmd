@@ -112,6 +112,26 @@ geosam_status()
 
 This will show you the status of your Python environment, whether GPU acceleration is available (MPS on Apple Silicon, CUDA on NVIDIA), and whether your HuggingFace token is configured. If everything shows green checkmarks, you're ready to go.
 
+#### Troubleshooting conda installations
+
+If you have multiple conda distributions installed (e.g., miniconda, miniforge, anaconda), you may encounter errors like "conda environment 'geosam' not found" even when the environment exists. This happens because R's reticulate package may be looking in a different conda installation than where your environment was created.
+
+To diagnose the issue:
+
+``` r
+geosam_diagnose()
+```
+
+This will scan your system for all conda installations and geosam environments, and provide recommendations. If your geosam environment is in a different conda than reticulate's default, you can specify which conda to use:
+
+``` r
+# Use a specific conda installation (e.g., miniforge on Windows)
+geosam_install(method = "conda", conda = "C:\\Users\\YourName\\miniforge3\\Scripts\\conda.exe")
+
+# Or on macOS/Linux
+geosam_install(method = "conda", conda = "~/miniforge3/bin/conda")
+```
+
 ### Your first detection
 
 Let's detect football fields on the TCU campus in Fort Worth. The `sam_detect()` function is the main workhorse for satellite imagery detection. You provide a bounding box, describe what you're looking for with a text prompt, and geosam handles the rest—downloading imagery, running SAM3 inference, and returning georeferenced results.

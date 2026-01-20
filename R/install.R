@@ -11,6 +11,9 @@
 #' @param hf_token Optional HuggingFace token for accessing SAM3 model weights.
 #'   Can also be set via the HF_TOKEN environment variable. Required for SAM3.
 #' @param python_version Python version to use (default: "3.12"). SAM3 requires 3.12+.
+#' @param conda Path to conda executable. Only used when `method = "conda"`.
+#'   If "auto" (default), uses reticulate's default conda. Useful when you have
+#'   multiple conda installations (miniconda, miniforge, anaconda, etc.).
 #'
 #' @return Invisibly returns TRUE on success.
 #'
@@ -38,6 +41,8 @@
 #' to be installed on your system.
 #'
 #' **conda**: Uses conda/miniconda. Slower but handles complex dependencies well.
+#' If you have multiple conda installations, use the `conda` parameter to specify
+#' which one to use.
 #'
 #' ## SAM3 Access
 #'
@@ -59,13 +64,17 @@
 #'
 #' # Use conda
 #' geosam_install(method = "conda")
+#'
+#' # Use a specific conda installation (e.g., miniforge instead of miniconda)
+#' geosam_install(method = "conda", conda = "~/miniforge3/bin/conda")
 #' }
 geosam_install <- function(
     envname = "geosam",
     method = c("uv", "virtualenv", "conda"),
     gpu = NULL,
     hf_token = NULL,
-    python_version = "3.12"
+    python_version = "3.12",
+    conda = "auto"
 ) {
   method <- match.arg(method)
 
@@ -82,7 +91,7 @@ geosam_install <- function(
   success <- switch(method,
     uv = .install_uv(envname, gpu, python_version),
     virtualenv = .install_virtualenv(envname, gpu, python_version),
-    conda = .install_conda(envname, gpu, python_version)
+    conda = .install_conda(envname, gpu, python_version, conda)
   )
 
   if (!success) {
@@ -289,30 +298,91 @@ geosam_install <- function(
 
 #' Install using conda
 #' @noRd
-.install_conda <- function(envname, gpu, python_version) {
-  # Check if conda is available
-  tryCatch({
-    reticulate::conda_list()
+.install_conda <- function(envname, gpu, python_version, conda = "auto") {
+  # Resolve conda path
+ if (identical(conda, "auto")) {
+    conda_path <- tryCatch(reticulate::conda_binary(), error = function(e) NULL)
+    if (is.null(conda_path)) {
+      # No conda found - check if there's one elsewhere with helpful message
+      all_condas <- .find_conda_installations()
+      if (length(all_condas) > 0) {
+        cli::cli_abort(c(
+          "Conda not found by reticulate, but found conda installation(s) at:",
+          "i" = paste(all_condas, collapse = "\n"),
+          "i" = "Try specifying the conda path explicitly:",
+          "i" = "{.code geosam_install(method = 'conda', conda = '{all_condas[1]}')}"
+        ))
+      } else {
+        cli::cli_abort(c(
+          "Conda not found.",
+          "i" = "Install miniconda from https://docs.conda.io/en/latest/miniconda.html",
+          "i" = "Or use {.code method = 'uv'} instead (recommended)."
+        ))
+      }
+    }
+  } else {
+    # User specified a conda path
+    conda_path <- path.expand(conda)
+    if (!file.exists(conda_path)) {
+      cli::cli_abort(c(
+        "Specified conda not found at: {conda_path}",
+        "i" = "Run {.code geosam_diagnose()} to see available conda installations."
+      ))
+    }
+  }
+
+  cli::cli_alert_info("Using conda: {conda_path}")
+
+  # Check for existing environment in THIS conda
+  envs <- tryCatch({
+    reticulate::conda_list(conda = conda_path)
   }, error = function(e) {
     cli::cli_abort(c(
-      "Conda not found.",
-      "i" = "Install miniconda or use {.code method = 'uv'} instead."
+      "Failed to list conda environments.",
+      "x" = e$message
     ))
   })
 
-  # Check for existing environment
-  envs <- reticulate::conda_list()
   if (envname %in% envs$name) {
+    # Environment exists in this conda
     cli::cli_alert_warning("Conda environment '{envname}' already exists.")
     if (interactive()) {
       response <- readline("Reinstall? (y/N): ")
       if (tolower(response) != "y") {
+        # Save config so geosam knows where to find it
+        .save_env_config(envname, method = "conda", conda = conda_path)
         return(TRUE)
       }
       cli::cli_alert_info("Removing existing environment...")
-      reticulate::conda_remove(envname)
+      reticulate::conda_remove(envname, conda = conda_path)
     } else {
+      .save_env_config(envname, method = "conda", conda = conda_path)
       return(TRUE)
+    }
+  } else {
+    # Environment doesn't exist in this conda - check if it exists elsewhere
+    found_elsewhere <- .find_geosam_env(envname)
+    if (!is.null(found_elsewhere) && normalizePath(found_elsewhere$conda, mustWork = FALSE) != normalizePath(conda_path, mustWork = FALSE)) {
+      cli::cli_alert_warning("Environment '{envname}' was not found in the current conda.")
+      cli::cli_alert_info("However, '{envname}' exists in a different conda installation:")
+      cli::cli_alert_info("  Conda: {found_elsewhere$conda}")
+      cli::cli_alert_info("  Python: {found_elsewhere$python}")
+      cli::cli_alert("")
+      cli::cli_alert_info("To use the existing environment, run:")
+      cli::cli_alert_info("{.code geosam_install(method = 'conda', conda = '{found_elsewhere$conda}')}")
+      cli::cli_alert("")
+
+      if (interactive()) {
+        response <- readline("Create a NEW environment in the current conda instead? (y/N): ")
+        if (tolower(response) != "y") {
+          return(FALSE)
+        }
+      } else {
+        cli::cli_abort(c(
+          "Environment exists in different conda installation.",
+          "i" = "Use {.code conda = '{found_elsewhere$conda}'} to use the existing environment."
+        ))
+      }
     }
   }
 
@@ -320,7 +390,8 @@ geosam_install <- function(
   cli::cli_alert_info("Creating conda environment '{envname}'...")
   reticulate::conda_create(
     envname = envname,
-    python_version = python_version
+    python_version = python_version,
+    conda = conda_path
   )
 
   # Install PyTorch
@@ -328,7 +399,8 @@ geosam_install <- function(
   reticulate::conda_install(
     envname = envname,
     packages = .get_pytorch_packages(gpu),
-    pip = TRUE
+    pip = TRUE,
+    conda = conda_path
   )
 
   # Install HuggingFace transformers (dev branch for SAM3)
@@ -336,7 +408,8 @@ geosam_install <- function(
   reticulate::conda_install(
     envname = envname,
     packages = c("git+https://github.com/huggingface/transformers.git", "huggingface_hub"),
-    pip = TRUE
+    pip = TRUE,
+    conda = conda_path
   )
 
   # Install geospatial deps
@@ -352,11 +425,12 @@ geosam_install <- function(
       "pillow>=10.0",
       "requests>=2.31"
     ),
-    pip = TRUE
+    pip = TRUE,
+    conda = conda_path
   )
 
-  # Save config
-  .save_env_config(envname, method = "conda")
+  # Save config with conda path
+  .save_env_config(envname, method = "conda", conda = conda_path)
 
   cli::cli_alert_success("Conda environment '{envname}' created.")
   TRUE
@@ -381,13 +455,14 @@ geosam_install <- function(
 
 #' Save environment configuration
 #' @noRd
-.save_env_config <- function(env_path, method) {
+.save_env_config <- function(env_path, method, conda = NULL) {
   config_dir <- rappdirs::user_config_dir("geosam")
   dir.create(config_dir, recursive = TRUE, showWarnings = FALSE)
 
   config <- list(
     env_path = env_path,
     method = method,
+    conda = conda,
     created = Sys.time()
   )
 
@@ -526,6 +601,123 @@ geosam_status <- function() {
 }
 
 
+#' Diagnose geosam Installation Issues
+#'
+#' Scans the system for conda installations and geosam environments to help
+#' troubleshoot installation problems. Useful when you have multiple conda
+#' distributions installed (miniconda, miniforge, anaconda, etc.).
+#'
+#' @return A list with diagnostic information, invisibly.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' geosam_diagnose()
+#' }
+geosam_diagnose <- function() {
+  cli::cli_h1("geosam Installation Diagnostics")
+
+  result <- list(
+    conda_installations = character(),
+    geosam_environments = list(),
+    reticulate_conda = NULL,
+    saved_config = NULL
+  )
+
+  # Check what reticulate thinks is the default conda
+  cli::cli_h2("Reticulate Configuration")
+  tryCatch({
+    result$reticulate_conda <- reticulate::conda_binary()
+    cli::cli_alert_success("Reticulate default conda: {result$reticulate_conda}")
+  }, error = function(e) {
+    cli::cli_alert_warning("Reticulate cannot find conda")
+  })
+
+  # Find all conda installations
+  cli::cli_h2("Conda Installations Found")
+  condas <- .find_conda_installations()
+  result$conda_installations <- condas
+
+  if (length(condas) == 0) {
+    cli::cli_alert_warning("No conda installations found.")
+    cli::cli_alert_info("Install miniconda from: https://docs.conda.io/en/latest/miniconda.html")
+  } else {
+    for (conda in condas) {
+      cli::cli_alert_success("{conda}")
+    }
+
+    if (length(condas) > 1) {
+      cli::cli_alert_info("Multiple conda installations detected. Use the {.code conda} parameter to specify which one to use.")
+    }
+  }
+
+  # Search for geosam environments
+  cli::cli_h2("geosam Environments")
+  for (conda in condas) {
+    tryCatch({
+      envs <- reticulate::conda_list(conda = conda)
+      if ("geosam" %in% envs$name) {
+        idx <- which(envs$name == "geosam")[1]
+        env_info <- list(
+          conda = conda,
+          python = envs$python[idx]
+        )
+        result$geosam_environments[[length(result$geosam_environments) + 1]] <- env_info
+        cli::cli_alert_success("Found 'geosam' environment:")
+        cli::cli_alert_info("  Conda: {conda}")
+        cli::cli_alert_info("  Python: {envs$python[idx]}")
+      }
+    }, error = function(e) NULL)
+  }
+
+  if (length(result$geosam_environments) == 0) {
+    cli::cli_alert_warning("No 'geosam' conda environments found.")
+    cli::cli_alert_info("Run {.code geosam_install(method = 'conda')} to create one.")
+  } else if (length(result$geosam_environments) > 1) {
+    cli::cli_alert_warning("Multiple 'geosam' environments found! This may cause confusion.")
+  }
+
+  # Check saved geosam configuration
+  cli::cli_h2("Saved geosam Configuration")
+  config <- .load_env_config()
+  result$saved_config <- config
+
+  if (is.null(config)) {
+    cli::cli_alert_warning("No saved geosam configuration found.")
+  } else {
+    cli::cli_alert_info("Method: {config$method}")
+    cli::cli_alert_info("Environment: {config$env_path}")
+    if (!is.null(config$conda)) {
+      cli::cli_alert_info("Conda: {config$conda}")
+    }
+    cli::cli_alert_info("Created: {config$created}")
+  }
+
+  # Provide recommendations
+  cli::cli_h2("Recommendations")
+
+  if (length(result$geosam_environments) == 1 && !is.null(result$reticulate_conda)) {
+    env <- result$geosam_environments[[1]]
+    if (normalizePath(env$conda, mustWork = FALSE) != normalizePath(result$reticulate_conda, mustWork = FALSE)) {
+      cli::cli_alert_warning("Your geosam environment is in a different conda than reticulate's default!")
+      cli::cli_alert_info("To fix this, run:")
+      cli::cli_alert_info("{.code geosam_install(method = 'conda', conda = '{env$conda}')}")
+    } else {
+      cli::cli_alert_success("Configuration looks good.")
+    }
+  } else if (length(result$geosam_environments) == 0 && length(condas) > 0) {
+    cli::cli_alert_info("Create a geosam environment with:")
+    cli::cli_alert_info("{.code geosam_install(method = 'conda')}")
+  } else if (length(condas) == 0) {
+    cli::cli_alert_info("Consider using the 'uv' method instead:")
+    cli::cli_alert_info("{.code geosam_install(method = 'uv')}")
+  }
+
+  invisible(result)
+}
+
+
 #' Activate the geosam Python environment
 #' @noRd
 .activate_env <- function(config = NULL) {
@@ -539,7 +731,12 @@ geosam_status <- function() {
 
   if (config$method == "conda") {
     tryCatch({
-      reticulate::use_condaenv(config$env_path, required = TRUE)
+      # Use stored conda path if available
+      if (!is.null(config$conda)) {
+        reticulate::use_condaenv(config$env_path, conda = config$conda, required = TRUE)
+      } else {
+        reticulate::use_condaenv(config$env_path, required = TRUE)
+      }
       TRUE
     }, error = function(e) FALSE)
   } else {
@@ -570,6 +767,7 @@ geosam_status <- function() {
 #' Detect Apple Silicon
 #' @noRd
 .is_apple_silicon <- function() {
+
   if (Sys.info()["sysname"] != "Darwin") {
     return(FALSE)
   }
@@ -578,4 +776,83 @@ geosam_status <- function() {
     output <- system("sysctl -n machdep.cpu.brand_string", intern = TRUE)
     grepl("Apple", output, ignore.case = TRUE)
   }, error = function(e) FALSE)
+}
+
+
+#' Find All Conda Installations
+#'
+#' Searches common locations for conda installations.
+#'
+#' @return Character vector of paths to conda executables that exist.
+#' @noRd
+.find_conda_installations <- function() {
+  condas <- character()
+
+
+  # Try reticulate's conda_binary() first
+  tryCatch({
+    condas <- c(condas, reticulate::conda_binary())
+  }, error = function(e) NULL)
+
+  # Common locations vary by OS
+  if (.Platform$OS.type == "windows") {
+    home <- Sys.getenv("USERPROFILE")
+    candidates <- c(
+      file.path(home, "miniconda3", "Scripts", "conda.exe"),
+      file.path(home, "miniforge3", "Scripts", "conda.exe"),
+      file.path(home, "mambaforge", "Scripts", "conda.exe"),
+      file.path(home, "anaconda3", "Scripts", "conda.exe"),
+      file.path(home, "Miniconda3", "Scripts", "conda.exe"),
+      file.path(home, "Miniforge3", "Scripts", "conda.exe"),
+      file.path(home, "Mambaforge", "Scripts", "conda.exe"),
+      file.path(home, "Anaconda3", "Scripts", "conda.exe"),
+      "C:/ProgramData/miniconda3/Scripts/conda.exe",
+      "C:/ProgramData/miniforge3/Scripts/conda.exe",
+      "C:/ProgramData/Anaconda3/Scripts/conda.exe"
+    )
+  } else {
+    home <- path.expand("~")
+    candidates <- c(
+      file.path(home, "miniconda3", "bin", "conda"),
+      file.path(home, "miniforge3", "bin", "conda"),
+      file.path(home, "mambaforge", "bin", "conda"),
+      file.path(home, "anaconda3", "bin", "conda"),
+      "/opt/miniconda3/bin/conda",
+      "/opt/miniforge3/bin/conda",
+      "/opt/anaconda3/bin/conda",
+      "/usr/local/miniconda3/bin/conda",
+      "/usr/local/Caskroom/miniconda/base/bin/conda"
+    )
+  }
+
+  existing <- candidates[file.exists(candidates)]
+  unique(c(condas, existing))
+}
+
+
+#' Find geosam Environment Across All Conda Installations
+#'
+#' Searches all detected conda installations for an existing geosam environment.
+#'
+#' @param envname Name of the environment to search for (default: "geosam")
+#' @return A list with conda path, environment name, and python path if found; NULL otherwise.
+#' @noRd
+.find_geosam_env <- function(envname = "geosam") {
+  condas <- .find_conda_installations()
+
+  for (conda_path in condas) {
+    tryCatch({
+      envs <- reticulate::conda_list(conda = conda_path)
+      if (envname %in% envs$name) {
+        idx <- which(envs$name == envname)[1]
+        return(list(
+          conda = conda_path,
+          name = envname,
+          python = envs$python[idx]
+        ))
+      }
+    }, error = function(e) NULL)
+  }
+
+  NULL
 }
