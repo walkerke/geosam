@@ -1158,7 +1158,7 @@ sam_explore_image <- function(image) {
 
     # Handle window close
     session$onSessionEnded(function() {
-      shiny::stopApp(rv$geosam_image)
+      shiny::stopApp(shiny::isolate(rv$geosam_image))
     })
   }
 }

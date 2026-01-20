@@ -1189,7 +1189,7 @@ sam_explore <- function(
 
     # Handle window close - also return result (don't lose work)
     session$onSessionEnded(function() {
-      shiny::stopApp(rv$geosam)
+      shiny::stopApp(shiny::isolate(rv$geosam))
     })
   }
 }
