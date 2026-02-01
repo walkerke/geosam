@@ -313,12 +313,6 @@ sam_explore <- function(
           flex: 1;
           margin-bottom: 0 !important;
         }
-        .prompt-color {
-          width: 16px;
-          height: 16px;
-          border-radius: 3px;
-          flex-shrink: 0;
-        }
         .prompt-remove {
           background: none;
           border: none;
@@ -338,6 +332,24 @@ sam_explore <- function(
           color: #666;
         }
         .btn-add-prompt:hover { background: #eee; border-color: #999; }
+
+        /* Color picker styling */
+        .prompt-color-picker {
+          -webkit-appearance: none;
+          -moz-appearance: none;
+          appearance: none;
+          width: 24px;
+          height: 24px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          cursor: pointer;
+          padding: 0;
+          flex-shrink: 0;
+        }
+        .prompt-color-picker::-webkit-color-swatch-wrapper { padding: 2px; }
+        .prompt-color-picker::-webkit-color-swatch { border: none; border-radius: 2px; }
+        .prompt-color-picker::-moz-color-swatch { border: none; border-radius: 2px; }
+        .prompt-color-picker:hover { border-color: #999; }
 
         /* Slider styling - cleaner look */
         .control-panel .irs--shiny .irs-bar { background: #154733; border-top-color: #154733; border-bottom-color: #154733; }
@@ -650,9 +662,15 @@ sam_explore <- function(
         p <- prompts[[i]]
         shiny::div(
           class = "prompt-row",
-          shiny::div(
-            class = "prompt-color",
-            style = sprintf("background: %s;", p$color)
+          shiny::tags$input(
+            type = "color",
+            id = paste0("prompt_color_", p$id),
+            class = "prompt-color-picker",
+            value = p$color,
+            onchange = sprintf(
+              "Shiny.setInputValue('prompt_color_%s', this.value);",
+              p$id
+            )
           ),
           shiny::textInput(
             inputId = paste0("prompt_text_", p$id),
@@ -673,17 +691,19 @@ sam_explore <- function(
       do.call(shiny::tagList, rows)
     })
 
-    # Add prompt button - preserve existing text values
+    # Add prompt button - preserve existing text and color values
     shiny::observeEvent(input$add_prompt, {
       if (length(rv$prompts) < 6) {
-        # Capture current text values before modifying
+        # Capture current text and color values before modifying
         current_prompts <- lapply(rv$prompts, function(p) {
-          input_id <- paste0("prompt_text_", p$id)
-          text <- input[[input_id]]
+          text_id <- paste0("prompt_text_", p$id)
+          color_id <- paste0("prompt_color_", p$id)
+          text <- input[[text_id]]
+          color <- input[[color_id]]
           list(
             id = p$id,
             text = if (is.null(text)) "" else text,
-            color = p$color
+            color = if (is.null(color)) p$color else color
           )
         })
         new_color <- prompt_colors[min(
@@ -702,7 +722,7 @@ sam_explore <- function(
       }
     })
 
-    # Remove prompt observers - preserve text values for remaining prompts
+    # Remove prompt observers - preserve text and color values for remaining prompts
     shiny::observe({
       prompts <- rv$prompts
       lapply(prompts, function(p) {
@@ -710,14 +730,16 @@ sam_explore <- function(
         shiny::observeEvent(
           input[[btn_id]],
           {
-            # Capture current text values before removing
+            # Capture current text and color values before removing
             current_prompts <- lapply(rv$prompts, function(pr) {
-              input_id <- paste0("prompt_text_", pr$id)
-              text <- input[[input_id]]
+              text_id <- paste0("prompt_text_", pr$id)
+              color_id <- paste0("prompt_color_", pr$id)
+              text <- input[[text_id]]
+              color <- input[[color_id]]
               list(
                 id = pr$id,
                 text = if (is.null(text)) "" else text,
-                color = pr$color
+                color = if (is.null(color)) pr$color else color
               )
             })
             rv$prompts <- Filter(function(x) x$id != p$id, current_prompts)
@@ -728,12 +750,18 @@ sam_explore <- function(
       })
     })
 
-    # Helper to get current prompt texts from inputs (avoids re-render issues)
+    # Helper to get current prompt texts and colors from inputs (avoids re-render issues)
     get_prompt_texts <- function() {
       lapply(rv$prompts, function(p) {
-        input_id <- paste0("prompt_text_", p$id)
-        text <- input[[input_id]]
-        list(id = p$id, text = if (is.null(text)) "" else text, color = p$color)
+        text_id <- paste0("prompt_text_", p$id)
+        color_id <- paste0("prompt_color_", p$id)
+        text <- input[[text_id]]
+        color <- input[[color_id]]
+        list(
+          id = p$id,
+          text = if (is.null(text)) "" else text,
+          color = if (is.null(color)) p$color else color
+        )
       })
     }
 
