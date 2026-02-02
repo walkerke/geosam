@@ -40,14 +40,11 @@ geosam_install(method = "conda") # or method = "virtualenv"
 
 This will set up a Python environment named `geosam` unless you supply an alternative name to `envname`.
 
-#### Windows prerequisites
+#### GPU acceleration
 
-On Windows, you'll need a couple of additional tools:
+SAM3 runs significantly faster with GPU acceleration. If you have an NVIDIA GPU with CUDA support, or an Apple Silicon Mac, geosam will automatically detect and use it. GPU inference is typically 5-10x faster than CPU, which makes a noticeable difference when processing larger areas or multiple detections.
 
--   **Git**: Required to install SAM3 from GitHub. Download from [git-scm.com](https://git-scm.com/download/win) and install with default settings.
--   **Rtools**: Required to compile some R package dependencies. Download from [CRAN](https://cran.r-project.org/bin/windows/Rtools/).
-
-After installing these, restart your R session before running `geosam_install()`.
+You can verify your GPU is being used with `geosam_status()` after installation—look for "MPS (Apple Silicon)" or "CUDA" in the PyTorch status line.
 
 ### Authentication
 

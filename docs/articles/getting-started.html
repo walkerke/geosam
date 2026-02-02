@@ -28,7 +28,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">geosam</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.0.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.1.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -94,16 +94,10 @@
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/geosam_install.html">geosam_install</a></span><span class="op">(</span>method <span class="op">=</span> <span class="st">"conda"</span><span class="op">)</span> <span class="co"># or method = "virtualenv"</span></span></code></pre></div>
 <p>This will set up a Python environment named <code>geosam</code> unless you supply an alternative name to <code>envname</code>.</p>
-<section class="level4"><h4 id="windows-prerequisites">Windows prerequisites<a class="anchor" aria-label="anchor" href="#windows-prerequisites"></a>
+<section class="level4"><h4 id="gpu-acceleration">GPU acceleration<a class="anchor" aria-label="anchor" href="#gpu-acceleration"></a>
 </h4>
-<p>On Windows, you’ll need a couple of additional tools:</p>
-<ul>
-<li>
-<strong>Git</strong>: Required to install SAM3 from GitHub. Download from <a href="https://git-scm.com/download/win" class="external-link">git-scm.com</a> and install with default settings.</li>
-<li>
-<strong>Rtools</strong>: Required to compile some R package dependencies. Download from <a href="https://cran.r-project.org/bin/windows/Rtools/" class="external-link">CRAN</a>.</li>
-</ul>
-<p>After installing these, restart your R session before running <code><a href="../reference/geosam_install.html">geosam_install()</a></code>.</p>
+<p>SAM3 runs significantly faster with GPU acceleration. If you have an NVIDIA GPU with CUDA support, or an Apple Silicon Mac, geosam will automatically detect and use it. GPU inference is typically 5-10x faster than CPU, which makes a noticeable difference when processing larger areas or multiple detections.</p>
+<p>You can verify your GPU is being used with <code><a href="../reference/geosam_status.html">geosam_status()</a></code> after installation—look for “MPS (Apple Silicon)” or “CUDA” in the PyTorch status line.</p>
 </section></section><section class="level3"><h3 id="authentication">Authentication<a class="anchor" aria-label="anchor" href="#authentication"></a>
 </h3>
 <p>geosam uses Meta’s SAM3 model hosted on HuggingFace, which requires authentication. You’ll need to complete two steps: request access to the model, and set up your access token.</p>
@@ -154,7 +148,7 @@
 <pre><code>ℹ Path: /Users/kylewalker/.geosam/venvs/geosam/bin/python</code></pre>
 </div>
 <div class="cell-output cell-output-stderr">
-<pre><code>✔ PyTorch 2.9.1: MPS (Apple Silicon)</code></pre>
+<pre><code>✔ PyTorch 2.10.0: MPS (Apple Silicon)</code></pre>
 </div>
 <div class="cell-output cell-output-stderr">
 <pre><code>✔ transformers: available (SAM3 via HuggingFace)</code></pre>
@@ -164,11 +158,24 @@
 </div>
 </div>
 <p>This will show you the status of your Python environment, whether GPU acceleration is available (MPS on Apple Silicon, CUDA on NVIDIA), and whether your HuggingFace token is configured. If everything shows green checkmarks, you’re ready to go.</p>
-</section><section class="level3"><h3 id="your-first-detection">Your first detection<a class="anchor" aria-label="anchor" href="#your-first-detection"></a>
+<section class="level4"><h4 id="troubleshooting-conda-installations">Troubleshooting conda installations<a class="anchor" aria-label="anchor" href="#troubleshooting-conda-installations"></a>
+</h4>
+<p>If you have multiple conda distributions installed (e.g., miniconda, miniforge, anaconda), you may encounter errors like “conda environment ‘geosam’ not found” even when the environment exists. This happens because R’s reticulate package may be looking in a different conda installation than where your environment was created.</p>
+<p>To diagnose the issue:</p>
+<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/geosam_diagnose.html">geosam_diagnose</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
+<p>This will scan your system for all conda installations and geosam environments, and provide recommendations. If your geosam environment is in a different conda than reticulate’s default, you can specify which conda to use:</p>
+<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Use a specific conda installation (e.g., miniforge on Windows)</span></span>
+<span><span class="fu"><a href="../reference/geosam_install.html">geosam_install</a></span><span class="op">(</span>method <span class="op">=</span> <span class="st">"conda"</span>, conda <span class="op">=</span> <span class="st">"C:\\Users\\YourName\\miniforge3\\Scripts\\conda.exe"</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Or on macOS/Linux</span></span>
+<span><span class="fu"><a href="../reference/geosam_install.html">geosam_install</a></span><span class="op">(</span>method <span class="op">=</span> <span class="st">"conda"</span>, conda <span class="op">=</span> <span class="st">"~/miniforge3/bin/conda"</span><span class="op">)</span></span></code></pre></div>
+</section></section><section class="level3"><h3 id="your-first-detection">Your first detection<a class="anchor" aria-label="anchor" href="#your-first-detection"></a>
 </h3>
 <p>Let’s detect football fields on the TCU campus in Fort Worth. The <code><a href="../reference/sam_detect.html">sam_detect()</a></code> function is the main workhorse for satellite imagery detection. You provide a bounding box, describe what you’re looking for with a text prompt, and geosam handles the rest—downloading imagery, running SAM3 inference, and returning georeferenced results.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb18"><pre class="downlit sourceCode r">
+<div class="sourceCode cell-code" id="cb20"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">field</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sam_detect.html">sam_detect</a></span><span class="op">(</span></span>
 <span>  bbox <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">97.372</span>, <span class="fl">32.707</span>, <span class="op">-</span><span class="fl">97.366</span>, <span class="fl">32.712</span><span class="op">)</span>,</span>
 <span>  text <span class="op">=</span> <span class="st">"football field"</span>,</span>
@@ -182,7 +189,7 @@
 
 ℹ Fetching 12 tiles (4x3)...
 
-✔ Saved imagery to: /var/folders/qm/xbtsglmj2ss91z9fzpz8k6q8ylngb5/T//RtmpdvPsyt/filea7325eebf2.tif
+✔ Saved imagery to: /var/folders/qm/xbtsglmj2ss91z9fzpz8k6q8ylngb5/T//RtmpRjhmWR/file1976eef14fc.tif
 
 ℹ Large image (2048x1536). Processing in 6 chunks...
 
@@ -192,15 +199,13 @@
 
 Detecting objects [2/6]  33%
 
-Detecting objects [3/6]  50%
-
-Detecting objects [5/6]  83%
+Detecting objects [4/6]  67%
 
 Detecting objects [6/6] 100%
 
 ✔ Detected 2 objects across 6 chunks.</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb20"><pre class="downlit sourceCode r">
+<div class="sourceCode cell-code" id="cb22"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">field</span><span class="op">)</span></span></code></pre></div>
 <div class="cell-output-display">
 <div>
@@ -214,7 +219,7 @@ Detecting objects [6/6] 100%
 </section><section class="level3"><h3 id="viewing-results">Viewing results<a class="anchor" aria-label="anchor" href="#viewing-results"></a>
 </h3>
 <p>Use <code><a href="../reference/sam_view.html">sam_view()</a></code> to explore your detections interactively:</p>
-<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/sam_view.html">sam_view</a></span><span class="op">(</span><span class="va">field</span><span class="op">)</span></span></code></pre></div>
 <p><img src="images/paste-8.png"></p>
 <p>This opens a Shiny application with the satellite imagery as a basemap and your detections overlaid as polygons. You can adjust the confidence threshold with a slider to filter out lower-quality detections, and click on individual polygons to see their confidence scores. Here, we’ve picked up the field inside the football stadium as well as the nearby practice field.</p>
@@ -223,7 +228,7 @@ Detecting objects [6/6] 100%
 </h3>
 <p>When you’re ready to work with the results in R, extract them as an sf object:</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb22"><pre class="downlit sourceCode r">
+<div class="sourceCode cell-code" id="cb24"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">field_sf</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sam_as_sf.html">sam_as_sf</a></span><span class="op">(</span><span class="va">field</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">field_sf</span></span></code></pre></div>

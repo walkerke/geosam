@@ -80,6 +80,7 @@ reference:
   - geosam_install
   - geosam_configure
   - geosam_status
+  - geosam_diagnose
   - sam_load
   - sam_unload
   - sam_is_loaded
