@@ -115,10 +115,62 @@ sam_explore <- function(
           width: 280px;
           max-height: calc(100vh - 40px);
           overflow-y: auto;
+          transition: transform 0.3s ease, opacity 0.3s ease;
         }
 
+        .control-panel.collapsed {
+          transform: translateX(calc(100% + 10px));
+          opacity: 0;
+          pointer-events: none;
+        }
+
+        .panel-toggle {
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          z-index: 999;
+          width: 32px;
+          height: 32px;
+          background: rgba(255, 255, 255, 0.9);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
+          border: none;
+          border-radius: 6px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 22px;
+          color: #154733;
+          transition: background 0.2s;
+        }
+
+        .panel-toggle:hover { background: rgba(255, 255, 255, 1); }
+        .panel-toggle { display: none; font-weight: 300; }
+        .panel-toggle.visible { display: flex; }
+
+        .panel-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          margin-bottom: 4px;
+        }
+
+        .panel-close {
+          background: none;
+          border: none;
+          font-size: 18px;
+          color: #999;
+          cursor: pointer;
+          padding: 0;
+          line-height: 1;
+        }
+
+        .panel-close:hover { color: #333; }
+
         .control-panel h4 {
-          margin: 0 0 4px 0;
+          margin: 0;
           font-size: 16px;
           font-weight: 600;
           color: #333;
@@ -391,16 +443,48 @@ sam_explore <- function(
             btn.classList.remove('detecting');
           }
         });
+
+        function togglePanel(show) {
+          var panel = document.querySelector('.control-panel');
+          var toggleBtn = document.getElementById('panel-toggle');
+          if (show === true) {
+            panel.classList.remove('collapsed');
+            toggleBtn.classList.remove('visible');
+          } else if (show === false) {
+            panel.classList.add('collapsed');
+            toggleBtn.classList.add('visible');
+          } else {
+            panel.classList.toggle('collapsed');
+            toggleBtn.classList.toggle('visible');
+          }
+        }
       "
       ))
     ),
 
     map_output,
 
+    shiny::tags$button(
+      id = "panel-toggle",
+      class = "panel-toggle",
+      onclick = "togglePanel(true)",
+      title = "Show panel",
+      shiny::HTML("&#x2039;")
+    ),
+
     shiny::div(
       class = "control-panel",
 
-      shiny::h4("geosam"),
+      shiny::div(
+        class = "panel-header",
+        shiny::h4("geosam"),
+        shiny::tags$button(
+          class = "panel-close",
+          onclick = "togglePanel(false)",
+          title = "Hide panel",
+          shiny::HTML("\u2715")
+        )
+      ),
       shiny::div(class = "subtitle", "SAM 3 Object Detection"),
 
       # Current view info
@@ -460,6 +544,17 @@ sam_explore <- function(
         shiny::p(
           class = "help-text",
           "Draw a rectangle around ONE example. SAM will find all similar objects. Use the trash icon to clear."
+        ),
+        shiny::div(
+          style = "display: flex; align-items: center; gap: 8px; font-size: 11px; margin-top: 8px;",
+          shiny::span("Color:"),
+          shiny::tags$input(
+            type = "color",
+            id = "exemplar_color",
+            class = "prompt-color-picker",
+            value = "#facc15",
+            onchange = "Shiny.setInputValue('exemplar_color', this.value);"
+          )
         )
       ),
 
@@ -478,9 +573,17 @@ sam_explore <- function(
           inline = TRUE
         ),
         shiny::div(
-          style = "margin-bottom: 8px; font-size: 11px;",
-          "Points: ",
-          shiny::textOutput("n_points", inline = TRUE)
+          style = "display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 11px;",
+          shiny::span("Points: "),
+          shiny::textOutput("n_points", inline = TRUE),
+          shiny::span(style = "margin-left: auto;", "Color:"),
+          shiny::tags$input(
+            type = "color",
+            id = "points_color",
+            class = "prompt-color-picker",
+            value = "#facc15",
+            onchange = "Shiny.setInputValue('points_color', this.value);"
+          )
         ),
         shiny::actionButton(
           "clear_points",
@@ -1192,13 +1295,20 @@ sam_explore <- function(
         result_sf <- sam_as_sf(result)
 
         if (!is.null(result_sf) && nrow(result_sf) > 0) {
+          # Get color based on prompt type
+          fill_color <- if (input$prompt_type == "exemplar") {
+            input$exemplar_color %||% "#facc15"
+          } else {
+            input$points_color %||% "#facc15"
+          }
+
           get_proxy() |>
             mapgl::add_fill_layer(
               id = "detections",
               source = result_sf,
-              fill_color = "#facc15",
+              fill_color = fill_color,
               fill_opacity = 0.5,
-              fill_outline_color = "#eab308"
+              fill_outline_color = fill_color
             )
 
           rv$status <- sprintf("Found %d object(s).", sam_count(result))
