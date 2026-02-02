@@ -176,8 +176,8 @@ geosam_install <- function(
   cli::cli_alert_info("Installing PyTorch...")
   .uv_pip_install(env_path, .get_pytorch_packages(gpu))
 
-  cli::cli_alert_info("Installing HuggingFace transformers (dev branch for SAM3)...")
-  .uv_pip_install(env_path, c("git+https://github.com/huggingface/transformers.git", "huggingface_hub"))
+  cli::cli_alert_info("Installing HuggingFace transformers...")
+  .uv_pip_install(env_path, c("transformers>=5.0.0", "huggingface_hub"))
 
   cli::cli_alert_info("Installing geospatial dependencies...")
   .uv_pip_install(env_path, c(
@@ -268,10 +268,10 @@ geosam_install <- function(
     pip_options = character()
   )
 
-  cli::cli_alert_info("Installing HuggingFace transformers (dev branch for SAM3)...")
+  cli::cli_alert_info("Installing HuggingFace transformers...")
   reticulate::virtualenv_install(
     envname = env_path,
-    packages = c("git+https://github.com/huggingface/transformers.git", "huggingface_hub")
+    packages = c("transformers>=5.0.0", "huggingface_hub")
   )
 
   cli::cli_alert_info("Installing geospatial dependencies...")
@@ -403,11 +403,11 @@ geosam_install <- function(
     conda = conda_path
   )
 
-  # Install HuggingFace transformers (dev branch for SAM3)
+  # Install HuggingFace transformers
   cli::cli_alert_info("Installing HuggingFace transformers...")
   reticulate::conda_install(
     envname = envname,
-    packages = c("git+https://github.com/huggingface/transformers.git", "huggingface_hub"),
+    packages = c("transformers>=5.0.0", "huggingface_hub"),
     pip = TRUE,
     conda = conda_path
   )
