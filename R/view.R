@@ -373,7 +373,10 @@ sam_view <- function(
         )
       } else {
         # Esri - use maplibre with raster source
-        mapgl::maplibre(bounds = initial_sf) |>
+        mapgl::maplibre(
+          bounds = initial_sf,
+          style = mapgl::openfreemap_style("bright")
+        ) |>
           mapgl::add_raster_source(
             id = "esri-satellite",
             tiles = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -382,6 +385,10 @@ sam_view <- function(
           mapgl::add_raster_layer(
             id = "esri-satellite-layer",
             source = "esri-satellite"
+          ) |>
+          mapgl::move_layer(
+            "esri-satellite-layer",
+            "tunnel-service-track-casing"
           )
       }
     }
