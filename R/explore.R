@@ -62,7 +62,10 @@ sam_explore <- function(
   # Convert bbox if sf
   if (!is.null(bbox)) {
     if (inherits(bbox, c("sf", "sfc"))) {
-      bbox <- sf::st_bbox(sf::st_transform(bbox, "+proj=longlat +datum=WGS84 +no_defs"))
+      bbox <- sf::st_bbox(sf::st_transform(
+        bbox,
+        "+proj=longlat +datum=WGS84 +no_defs"
+      ))
     }
     center <- c((bbox[1] + bbox[3]) / 2, (bbox[2] + bbox[4]) / 2)
     # Estimate zoom from bbox width
@@ -728,6 +731,7 @@ sam_explore <- function(
       # Esri - use maplibre with raster source
       output$map <- mapgl::renderMaplibre({
         mapgl::maplibre(
+          style = mapgl::openfreemap_style("bright"),
           center = initial_center,
           zoom = initial_zoom
         ) |>
@@ -741,7 +745,14 @@ sam_explore <- function(
             source = "esri-satellite"
           ) |>
           mapgl::add_navigation_control(position = "top-left") |>
-          mapgl::add_scale_control(position = "bottom-left", unit = "imperial")
+          mapgl::add_scale_control(
+            position = "bottom-left",
+            unit = "imperial"
+          ) |>
+          mapgl::move_layer(
+            "esri-satellite-layer",
+            "tunnel-service-track-casing"
+          )
       })
     }
 
@@ -1101,7 +1112,11 @@ sam_explore <- function(
 
             # Download imagery once for all prompts
             rv$status <- "Downloading imagery..."
-            img_path <- get_imagery(bbox = bbox, source = source, zoom = ext_zoom)
+            img_path <- get_imagery(
+              bbox = bbox,
+              source = source,
+              zoom = ext_zoom
+            )
 
             # Run detection for each prompt and combine results
             all_results <- list()
