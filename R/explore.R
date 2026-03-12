@@ -11,6 +11,8 @@
 #' @param bbox Initial bounding box as c(xmin, ymin, xmax, ymax) or sf object.
 #'   If provided, map will zoom to this extent.
 #' @param zoom Initial zoom level (default 15).
+#' @param units Unit system for the scale bar and area display: `"metric"`
+#'   (km/m) or `"imperial"` (mi/ft). Default is `"metric"`.
 #' @param ... Additional arguments passed to `sam_detect()`. Useful for setting
 #'   `min_area`, `max_area`, or other detection parameters.
 #'
@@ -42,6 +44,7 @@ sam_explore <- function(
   center = NULL,
   bbox = NULL,
   zoom = 15,
+  units = c("metric", "imperial"),
   ...
 ) {
   rlang::check_installed(
@@ -49,6 +52,7 @@ sam_explore <- function(
     reason = "for interactive exploration"
   )
   source <- match.arg(source)
+  units <- match.arg(units)
 
   # Check for required API keys and fall back to Esri if missing
   source <- .resolve_map_source(source)
@@ -80,7 +84,7 @@ sam_explore <- function(
   result <- shiny::runGadget(
     app = shiny::shinyApp(
       ui = .explore_ui(source),
-      server = .explore_server(source, center, zoom, detect_args)
+      server = .explore_server(source, center, zoom, units, detect_args)
     ),
     viewer = shiny::dialogViewer("geosam", width = 1200, height = 800)
   )
@@ -669,6 +673,7 @@ sam_explore <- function(
   source,
   initial_center,
   initial_zoom,
+  units = "metric",
   detect_args = list()
 ) {
   function(input, output, session) {
@@ -714,7 +719,7 @@ sam_explore <- function(
           zoom = initial_zoom
         ) |>
           mapgl::add_navigation_control(position = "top-left") |>
-          mapgl::add_scale_control(position = "bottom-left", unit = "imperial")
+          mapgl::add_scale_control(position = "bottom-left", unit = units)
       })
     } else if (source == "maptiler") {
       # MapTiler - use maplibre with maptiler_style
@@ -725,7 +730,7 @@ sam_explore <- function(
           zoom = initial_zoom
         ) |>
           mapgl::add_navigation_control(position = "top-left") |>
-          mapgl::add_scale_control(position = "bottom-left", unit = "imperial")
+          mapgl::add_scale_control(position = "bottom-left", unit = units)
       })
     } else {
       # Esri - use maplibre with raster source
@@ -747,7 +752,7 @@ sam_explore <- function(
           mapgl::add_navigation_control(position = "top-left") |>
           mapgl::add_scale_control(
             position = "bottom-left",
-            unit = "imperial"
+            unit = units
           ) |>
           mapgl::move_layer(
             "esri-satellite-layer",
@@ -925,12 +930,23 @@ sam_explore <- function(
           height_km <- (bounds$ymax - bounds$ymin) * 111.32
           area_km2 <- width_km * height_km
 
-          if (area_km2 < 1) {
-            sprintf("%.0f m\u00b2", area_km2 * 1e6)
-          } else if (area_km2 < 100) {
-            sprintf("%.1f km\u00b2", area_km2)
+          if (units == "imperial") {
+            area_mi2 <- area_km2 * 0.386102
+            if (area_mi2 < 1) {
+              sprintf("%.0f ft\u00b2", area_mi2 * 27878400)
+            } else if (area_mi2 < 100) {
+              sprintf("%.1f mi\u00b2", area_mi2)
+            } else {
+              sprintf("%.0f mi\u00b2", area_mi2)
+            }
           } else {
-            sprintf("%.0f km\u00b2", area_km2)
+            if (area_km2 < 1) {
+              sprintf("%.0f m\u00b2", area_km2 * 1e6)
+            } else if (area_km2 < 100) {
+              sprintf("%.1f km\u00b2", area_km2)
+            } else {
+              sprintf("%.0f km\u00b2", area_km2)
+            }
           }
         },
         error = function(e) "-"

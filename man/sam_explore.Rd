@@ -9,6 +9,7 @@ sam_explore(
   center = NULL,
   bbox = NULL,
   zoom = 15,
+  units = c("metric", "imperial"),
   ...
 )
 }
@@ -26,6 +27,9 @@ sam_explore(
 If provided, map will zoom to this extent.}
 
 \item{zoom}{Initial zoom level (default 15).}
+
+\item{units}{Unit system for the scale bar and area display: \code{"metric"}
+(km/m) or \code{"imperial"} (mi/ft). Default is \code{"metric"}.}
 
 \item{...}{Additional arguments passed to \code{sam_detect()}. Useful for setting
 \code{min_area}, \code{max_area}, or other detection parameters.}
