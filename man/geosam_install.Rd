@@ -69,8 +69,8 @@ which one to use.
 
 \subsection{SAM3 Access}{
 
-You must have HuggingFace access approval for SAM3 model weights.
-Request access at: https://huggingface.co/facebook/sam3
+You must log in to HuggingFace and accept the gated model terms for SAM3
+model weights at: https://huggingface.co/facebook/sam3
 }
 }
 \examples{

@@ -1,6 +1,10 @@
 # Package environment for storing state
 .geosam_env <- new.env(parent = emptyenv())
 
+`%||%` <- function(x, y) {
+  if (is.null(x)) y else x
+}
+
 .onLoad <- function(libname, pkgname) {
  # Initialize package state
   .geosam_env$model_loaded <- FALSE

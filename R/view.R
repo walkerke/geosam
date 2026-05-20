@@ -388,7 +388,7 @@ sam_view <- function(
           ) |>
           mapgl::move_layer(
             "esri-satellite-layer",
-            "tunnel-service-track-casing"
+            "road_oneway"
           )
       }
     }
@@ -452,6 +452,17 @@ sam_view <- function(
           ) |>
           add_layers()
       })
+    }
+
+    # Restyle OpenFreeMap road labels for legibility over Esri satellite.
+    # set_paint_property only takes effect via a proxy, so apply it after the
+    # map signals it's ready (input$map_bbox is emitted on first load).
+    if (source == "esri") {
+      shiny::observe({
+        shiny::req(input$map_bbox)
+        .style_road_labels_for_satellite(mapgl::maplibre_proxy("map"))
+      }) |>
+        shiny::bindEvent(input$map_bbox, once = TRUE)
     }
 
     # Confidence filter

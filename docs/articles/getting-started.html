@@ -28,7 +28,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">geosam</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.1.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.2.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -100,10 +100,10 @@
 <p>You can verify your GPU is being used with <code><a href="../reference/geosam_status.html">geosam_status()</a></code> after installation—look for “MPS (Apple Silicon)” or “CUDA” in the PyTorch status line.</p>
 </section></section><section class="level3"><h3 id="authentication">Authentication<a class="anchor" aria-label="anchor" href="#authentication"></a>
 </h3>
-<p>geosam uses Meta’s SAM3 model hosted on HuggingFace, which requires authentication. You’ll need to complete two steps: request access to the model, and set up your access token.</p>
+<p>geosam uses Meta’s SAM3 model hosted on HuggingFace, which requires authentication and gated model access. You’ll need to complete two steps: accept access terms for the model, and set up your access token.</p>
 <section class="level4"><h4 id="requesting-sam3-access">Requesting SAM3 access<a class="anchor" aria-label="anchor" href="#requesting-sam3-access"></a>
 </h4>
-<p>First, visit the <a href="https://huggingface.co/facebook/sam3" class="external-link">SAM3 model page on HuggingFace</a> and click “Request access.” You’ll need a free HuggingFace account. Access is typically granted quickly, but may take a few hours.</p>
+<p>First, visit the <a href="https://huggingface.co/facebook/sam3" class="external-link">SAM3 model page on HuggingFace</a> and click “Request access.” You’ll need a free HuggingFace account and you may be asked to share contact information under the model’s gated access terms. Access is typically granted quickly, but it is still required before geosam can download the weights.</p>
 </section><section class="level4"><h4 id="setting-up-your-access-token">Setting up your access token<a class="anchor" aria-label="anchor" href="#setting-up-your-access-token"></a>
 </h4>
 <p>Once you have access, you’ll need a User Access Token. From your HuggingFace account, go to <strong>Settings &gt; Access Tokens</strong> and create a new token. A “read” token is sufficient for geosam since we’re only downloading model weights—and read tokens are safer in case your token is accidentally exposed.</p>
@@ -151,21 +151,39 @@
 <pre><code>✔ PyTorch 2.10.0: MPS (Apple Silicon)</code></pre>
 </div>
 <div class="cell-output cell-output-stderr">
-<pre><code>✔ transformers: available (SAM3 via HuggingFace)</code></pre>
+<pre><code>✔ transformers: SAM3 classes available</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>✔ SAM3 tracker classes: available</code></pre>
 </div>
 <div class="cell-output cell-output-stderr">
 <pre><code>✔ HuggingFace token: configured</code></pre>
 </div>
+<div class="cell-output cell-output-stderr">
+<pre><code></code></pre>
 </div>
-<p>This will show you the status of your Python environment, whether GPU acceleration is available (MPS on Apple Silicon, CUDA on NVIDIA), and whether your HuggingFace token is configured. If everything shows green checkmarks, you’re ready to go.</p>
+<div class="cell-output cell-output-stderr">
+<pre><code>── SAM3 HuggingFace Access ──</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code></code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>ℹ SAM3 model cache: not found yet</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>✔ facebook/sam3 access: verified</code></pre>
+</div>
+</div>
+<p>This will show you the status of your Python environment, whether GPU acceleration is available (MPS on Apple Silicon, CUDA on NVIDIA), whether your HuggingFace token is configured, and whether that token can access <code>facebook/sam3</code>. If everything shows green checkmarks, you’re ready to go.</p>
 <section class="level4"><h4 id="troubleshooting-conda-installations">Troubleshooting conda installations<a class="anchor" aria-label="anchor" href="#troubleshooting-conda-installations"></a>
 </h4>
 <p>If you have multiple conda distributions installed (e.g., miniconda, miniforge, anaconda), you may encounter errors like “conda environment ‘geosam’ not found” even when the environment exists. This happens because R’s reticulate package may be looking in a different conda installation than where your environment was created.</p>
 <p>To diagnose the issue:</p>
-<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/geosam_diagnose.html">geosam_diagnose</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
 <p>This will scan your system for all conda installations and geosam environments, and provide recommendations. If your geosam environment is in a different conda than reticulate’s default, you can specify which conda to use:</p>
-<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Use a specific conda installation (e.g., miniforge on Windows)</span></span>
 <span><span class="fu"><a href="../reference/geosam_install.html">geosam_install</a></span><span class="op">(</span>method <span class="op">=</span> <span class="st">"conda"</span>, conda <span class="op">=</span> <span class="st">"C:\\Users\\YourName\\miniforge3\\Scripts\\conda.exe"</span><span class="op">)</span></span>
 <span></span>
@@ -175,7 +193,7 @@
 </h3>
 <p>Let’s detect football fields on the TCU campus in Fort Worth. The <code><a href="../reference/sam_detect.html">sam_detect()</a></code> function is the main workhorse for satellite imagery detection. You provide a bounding box, describe what you’re looking for with a text prompt, and geosam handles the rest—downloading imagery, running SAM3 inference, and returning georeferenced results.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb20"><pre class="downlit sourceCode r">
+<div class="sourceCode cell-code" id="cb26"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">field</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sam_detect.html">sam_detect</a></span><span class="op">(</span></span>
 <span>  bbox <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">97.372</span>, <span class="fl">32.707</span>, <span class="op">-</span><span class="fl">97.366</span>, <span class="fl">32.712</span><span class="op">)</span>,</span>
 <span>  text <span class="op">=</span> <span class="st">"football field"</span>,</span>
@@ -189,7 +207,7 @@
 
 ℹ Fetching 12 tiles (4x3)...
 
-✔ Saved imagery to: /var/folders/qm/xbtsglmj2ss91z9fzpz8k6q8ylngb5/T//RtmpRjhmWR/file1976eef14fc.tif
+✔ Saved imagery to: /var/folders/qm/xbtsglmj2ss91z9fzpz8k6q8ylngb5/T//RtmpuDkU0y/file453853f1b412.tif
 
 ℹ Large image (2048x1536). Processing in 6 chunks...
 
@@ -199,13 +217,17 @@
 
 Detecting objects [2/6]  33%
 
+Detecting objects [3/6]  50%
+
 Detecting objects [4/6]  67%
+
+Detecting objects [5/6]  83%
 
 Detecting objects [6/6] 100%
 
 ✔ Detected 2 objects across 6 chunks.</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb22"><pre class="downlit sourceCode r">
+<div class="sourceCode cell-code" id="cb28"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">field</span><span class="op">)</span></span></code></pre></div>
 <div class="cell-output-display">
 <div>
@@ -219,7 +241,7 @@ Detecting objects [6/6] 100%
 </section><section class="level3"><h3 id="viewing-results">Viewing results<a class="anchor" aria-label="anchor" href="#viewing-results"></a>
 </h3>
 <p>Use <code><a href="../reference/sam_view.html">sam_view()</a></code> to explore your detections interactively:</p>
-<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/sam_view.html">sam_view</a></span><span class="op">(</span><span class="va">field</span><span class="op">)</span></span></code></pre></div>
 <p><img src="images/paste-8.png"></p>
 <p>This opens a Shiny application with the satellite imagery as a basemap and your detections overlaid as polygons. You can adjust the confidence threshold with a slider to filter out lower-quality detections, and click on individual polygons to see their confidence scores. Here, we’ve picked up the field inside the football stadium as well as the nearby practice field.</p>
@@ -228,7 +250,7 @@ Detecting objects [6/6] 100%
 </h3>
 <p>When you’re ready to work with the results in R, extract them as an sf object:</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb24"><pre class="downlit sourceCode r">
+<div class="sourceCode cell-code" id="cb30"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">field_sf</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sam_as_sf.html">sam_as_sf</a></span><span class="op">(</span><span class="va">field</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">field_sf</span></span></code></pre></div>
@@ -239,8 +261,8 @@ Dimension:     XY
 Bounding box:  xmin: -97.3687 ymin: 32.70723 xmax: -97.36657 ymax: 32.71022
 Geodetic CRS:  +proj=longlat +datum=WGS84 +no_defs
       score  area_m2                       geometry
-1 0.8856184 17298.56 POLYGON ((-97.36768 32.7083...
-2 0.8946797 11335.05 POLYGON ((-97.36829 32.7102...</code></pre>
+1 0.8820943 17306.76 POLYGON ((-97.36768 32.7083...
+2 0.8899280 11331.49 POLYGON ((-97.36831 32.7102...</code></pre>
 </div>
 </div>
 <p>The resulting sf object includes a <code>score</code> column with confidence values (0–1) and an <code>area_m2</code> column with the area of each detection in square meters. From here, you can filter, analyze, or export your detections using standard sf workflows.</p>
@@ -346,7 +368,7 @@ Geodetic CRS:  +proj=longlat +datum=WGS84 +no_defs
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.9000.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.9000.</p>
 </div>
 
     </footer>

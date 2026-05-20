@@ -11,6 +11,7 @@ NOTE: This module only handles SAM inference. All geospatial processing
 """
 
 import os
+from collections import OrderedDict
 from typing import Optional, List, Dict, Any
 
 # Fix OpenMP conflict on macOS
@@ -30,6 +31,8 @@ _PROCESSOR = None
 _TRACKER_MODEL = None
 _TRACKER_PROCESSOR = None
 _DEVICE = None
+_TEXT_FEATURE_CACHE = OrderedDict()
+_TEXT_FEATURE_CACHE_MAX = 64
 
 
 def get_device() -> str:
@@ -66,6 +69,46 @@ def load_model(device: Optional[str] = None) -> bool:
     return True
 
 
+def _as_text_embeds(text_features):
+    """Normalize text feature return values across transformers versions."""
+    if hasattr(text_features, "pooler_output"):
+        return text_features.pooler_output
+    return text_features
+
+
+def _get_cached_text_features(text_prompt: str):
+    """Return cached SAM3 text embeddings and attention mask for a prompt."""
+    global _MODEL, _PROCESSOR, _DEVICE, _TEXT_FEATURE_CACHE
+
+    if _MODEL is None:
+        load_model()
+
+    cache_key = (_DEVICE, text_prompt)
+    if cache_key in _TEXT_FEATURE_CACHE:
+        _TEXT_FEATURE_CACHE.move_to_end(cache_key)
+        return _TEXT_FEATURE_CACHE[cache_key]
+
+    text_inputs = _PROCESSOR(text=text_prompt, return_tensors="pt").to(_DEVICE)
+    with torch.no_grad():
+        text_features = _MODEL.get_text_features(**text_inputs)
+    _TEXT_FEATURE_CACHE[cache_key] = {
+        "text_embeds": _as_text_embeds(text_features),
+        "attention_mask": text_inputs.get("attention_mask", None)
+    }
+    while len(_TEXT_FEATURE_CACHE) > _TEXT_FEATURE_CACHE_MAX:
+        _TEXT_FEATURE_CACHE.popitem(last=False)
+
+    return _TEXT_FEATURE_CACHE[cache_key]
+
+
+def _target_sizes_from_inputs(inputs, height: int, width: int):
+    """Return processor original_sizes when available, otherwise image size."""
+    original_sizes = inputs.get("original_sizes", None)
+    if original_sizes is not None:
+        return original_sizes.tolist()
+    return [[height, width]]
+
+
 def load_tracker_model(device: Optional[str] = None) -> bool:
     """
     Load SAM3 Tracker model for point/box prompts.
@@ -96,13 +139,14 @@ def load_tracker_model(device: Optional[str] = None) -> bool:
 
 def unload_model() -> bool:
     """Unload all models to free memory."""
-    global _MODEL, _PROCESSOR, _TRACKER_MODEL, _TRACKER_PROCESSOR, _DEVICE
+    global _MODEL, _PROCESSOR, _TRACKER_MODEL, _TRACKER_PROCESSOR, _DEVICE, _TEXT_FEATURE_CACHE
 
     _MODEL = None
     _PROCESSOR = None
     _TRACKER_MODEL = None
     _TRACKER_PROCESSOR = None
     _DEVICE = None
+    _TEXT_FEATURE_CACHE = OrderedDict()
 
     import gc
     gc.collect()
@@ -126,7 +170,8 @@ def is_tracker_loaded() -> bool:
 def detect_text(
     img_array: np.ndarray,
     text_prompt: str,
-    threshold: float = 0.5
+    threshold: float = 0.5,
+    use_text_cache: bool = False
 ) -> Dict[str, Any]:
     """
     Detect objects matching a text prompt using SAM3.
@@ -135,6 +180,11 @@ def detect_text(
         img_array: RGB image as numpy array (height, width, 3)
         text_prompt: Text description of objects to find
         threshold: Detection confidence threshold (0-1)
+        use_text_cache: Experimental. If True, reuse cached text embeddings
+            for the prompt. Off by default because the cached path passes
+            `text_embeds` (pooler_output shape (B, H)) where the model
+            documents `(B, L, H)`, and may produce different detections from
+            the combined-processor call.
 
     Returns:
         Dict with 'masks' (list of 2D numpy arrays) and 'scores' (list of floats)
@@ -147,17 +197,32 @@ def detect_text(
     height, width = img_array.shape[:2]
     pil_image = Image.fromarray(img_array.astype(np.uint8))
 
-    # Run inference with text prompt
-    inputs = _PROCESSOR(images=pil_image, text=text_prompt, return_tensors="pt").to(_DEVICE)
+    if use_text_cache:
+        img_inputs = _PROCESSOR(images=pil_image, return_tensors="pt").to(_DEVICE)
+        text_features = _get_cached_text_features(text_prompt)
+        model_args = {
+            "pixel_values": img_inputs.pixel_values,
+            "text_embeds": text_features["text_embeds"]
+        }
+        if text_features["attention_mask"] is not None:
+            model_args["attention_mask"] = text_features["attention_mask"]
 
-    with torch.no_grad():
-        outputs = _MODEL(**inputs)
+        with torch.no_grad():
+            outputs = _MODEL(**model_args)
+        target_sizes = _target_sizes_from_inputs(img_inputs, height, width)
+    else:
+        # Run inference with text prompt
+        inputs = _PROCESSOR(images=pil_image, text=text_prompt, return_tensors="pt").to(_DEVICE)
+
+        with torch.no_grad():
+            outputs = _MODEL(**inputs)
+        target_sizes = [[height, width]]
 
     results = _PROCESSOR.post_process_instance_segmentation(
         outputs,
         threshold=threshold,
         mask_threshold=0.5,
-        target_sizes=[[height, width]]
+        target_sizes=target_sizes
     )[0]
 
     masks = results["masks"]
@@ -173,6 +238,64 @@ def detect_text(
         "count": len(mask_list),
         "prompt": text_prompt
     }
+
+
+def detect_text_multi(
+    img_array: np.ndarray,
+    text_prompts: List[str],
+    threshold: float = 0.5
+) -> List[Dict[str, Any]]:
+    """
+    Run multiple text prompts on one image while reusing vision embeddings.
+
+    Args:
+        img_array: RGB image as numpy array (height, width, 3)
+        text_prompts: Prompt strings to run on the same image
+        threshold: Detection confidence threshold (0-1)
+
+    Returns:
+        List of result dicts, one per prompt.
+    """
+    global _MODEL, _PROCESSOR, _DEVICE
+
+    if _MODEL is None:
+        load_model()
+
+    pil_image = Image.fromarray(img_array.astype(np.uint8))
+    img_inputs = _PROCESSOR(images=pil_image, return_tensors="pt").to(_DEVICE)
+
+    with torch.no_grad():
+        vision_embeds = _MODEL.get_vision_features(pixel_values=img_inputs.pixel_values)
+
+    height, width = img_array.shape[:2]
+    target_sizes = _target_sizes_from_inputs(img_inputs, height, width)
+    all_results = []
+
+    for text_prompt in text_prompts:
+        text_inputs = _PROCESSOR(text=text_prompt, return_tensors="pt").to(_DEVICE)
+        with torch.no_grad():
+            outputs = _MODEL(vision_embeds=vision_embeds, **text_inputs)
+
+        results = _PROCESSOR.post_process_instance_segmentation(
+            outputs,
+            threshold=threshold,
+            mask_threshold=0.5,
+            target_sizes=target_sizes
+        )[0]
+
+        masks = results["masks"]
+        scores = results["scores"]
+        mask_list = [mask.cpu().numpy().astype(np.uint8) for mask in masks]
+        score_list = [float(s.cpu()) if hasattr(s, 'cpu') else float(s) for s in scores]
+
+        all_results.append({
+            "masks": mask_list,
+            "scores": score_list,
+            "count": len(mask_list),
+            "prompt": text_prompt
+        })
+
+    return all_results
 
 
 def detect_boxes(
@@ -426,6 +549,90 @@ def clear_cache() -> None:
             torch.mps.synchronize()
 
 
+def check_model_access(model_id: str = "facebook/sam3") -> Dict[str, Any]:
+    """
+    Check whether HuggingFace credentials can access the SAM3 model metadata.
+
+    This is intentionally metadata-only; it does not download model weights.
+    """
+    info = {
+        "model_id": model_id,
+        "huggingface_hub_available": False,
+        "hf_token_set": bool(os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")),
+        "cached_token_set": False,
+        "access_ok": False,
+        "classification": "unknown",
+        "message": None,
+        "cache_path": None,
+        "model_cached": False
+    }
+
+    try:
+        from huggingface_hub import HfApi
+        try:
+            from huggingface_hub import get_token
+        except ImportError:
+            get_token = None
+        try:
+            from huggingface_hub import scan_cache_dir
+        except ImportError:
+            scan_cache_dir = None
+    except ImportError as exc:
+        info["classification"] = "missing_huggingface_hub"
+        info["message"] = str(exc)
+        return info
+
+    info["huggingface_hub_available"] = True
+
+    cached_token = get_token() if get_token is not None else None
+    token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN") or cached_token
+    info["cached_token_set"] = bool(cached_token)
+    info["hf_token_set"] = bool(token)
+
+    try:
+        cache_info = scan_cache_dir() if scan_cache_dir is not None else None
+        if cache_info is not None:
+            info["cache_path"] = str(cache_info.cache_dir)
+            info["model_cached"] = any(
+                getattr(repo, "repo_id", None) == model_id
+                for repo in getattr(cache_info, "repos", [])
+            )
+    except Exception:
+        pass
+
+    if not token:
+        info["classification"] = "missing_token"
+        info["message"] = "No HuggingFace token found. Log in with huggingface-cli or set HF_TOKEN."
+        return info
+
+    try:
+        HfApi().model_info(model_id, token=token)
+        info["access_ok"] = True
+        info["classification"] = "ok"
+        info["message"] = "HuggingFace access verified."
+    except Exception as exc:
+        # HuggingFace error messages aren't a stable contract; this is a
+        # best-effort classification used only for friendlier diagnostics.
+        message = str(exc)
+        message_lower = message.lower()
+        info["message"] = message
+        if "gated" in message_lower or "restricted" in message_lower or "403" in message_lower:
+            info["classification"] = "gated_not_accepted"
+        elif "401" in message_lower or "unauthorized" in message_lower or "invalid token" in message_lower:
+            info["classification"] = "invalid_token"
+        elif (
+            "connection" in message_lower
+            or "timeout" in message_lower
+            or "name or service not known" in message_lower
+            or "nodename nor servname provided" in message_lower
+        ):
+            info["classification"] = "network_error"
+        else:
+            info["classification"] = "access_error"
+
+    return info
+
+
 def check_environment() -> Dict[str, Any]:
     """
     Check the Python environment and available features.
@@ -440,7 +647,8 @@ def check_environment() -> Dict[str, Any]:
         "transformers_available": False,
         "tracker_available": False,
         "model_loaded": is_model_loaded(),
-        "tracker_loaded": is_tracker_loaded()
+        "tracker_loaded": is_tracker_loaded(),
+        "text_feature_cache_size": len(_TEXT_FEATURE_CACHE)
     }
 
     try:

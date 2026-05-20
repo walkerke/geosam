@@ -13,6 +13,10 @@
 #' @param zoom Initial zoom level (default 15).
 #' @param units Unit system for the scale bar and area display: `"metric"`
 #'   (km/m) or `"imperial"` (mi/ft). Default is `"metric"`.
+#' @param quality Initial detection quality preset: `"balanced"` (default,
+#'   chunked with moderate overlap), `"fast"` (single-pass, no chunking — best
+#'   for small areas), or `"accurate"` (chunked with smaller tiles and more
+#'   overlap). Exposed in the UI under "Advanced".
 #' @param ... Additional arguments passed to `sam_detect()`. Useful for setting
 #'   `min_area`, `max_area`, or other detection parameters.
 #'
@@ -45,6 +49,7 @@ sam_explore <- function(
   bbox = NULL,
   zoom = 15,
   units = c("metric", "imperial"),
+  quality = c("balanced", "fast", "accurate"),
   ...
 ) {
   rlang::check_installed(
@@ -53,6 +58,7 @@ sam_explore <- function(
   )
   source <- match.arg(source)
   units <- match.arg(units)
+  quality <- match.arg(quality)
 
   # Check for required API keys and fall back to Esri if missing
   source <- .resolve_map_source(source)
@@ -83,7 +89,7 @@ sam_explore <- function(
   # Run gadget and return result
   result <- shiny::runGadget(
     app = shiny::shinyApp(
-      ui = .explore_ui(source),
+      ui = .explore_ui(source, quality),
       server = .explore_server(source, center, zoom, units, detect_args)
     ),
     viewer = shiny::dialogViewer("geosam", width = 1200, height = 800)
@@ -94,7 +100,7 @@ sam_explore <- function(
 
 
 #' @noRd
-.explore_ui <- function(source) {
+.explore_ui <- function(source, quality = "balanced") {
   # Choose correct output function based on source
   map_output <- if (source == "mapbox") {
     mapgl::mapboxglOutput("map", height = "100%")
@@ -215,6 +221,33 @@ sam_explore <- function(
 
         .info-label { font-weight: 500; }
         .info-value { color: #333; }
+
+        .advanced-details {
+          margin: 10px 0 4px 0;
+          border-top: 1px solid #eee;
+          padding-top: 8px;
+        }
+        .advanced-details > summary {
+          cursor: pointer;
+          font-size: 10px;
+          font-weight: 600;
+          color: #999;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          list-style: none;
+          padding: 2px 0;
+          user-select: none;
+        }
+        .advanced-details > summary::-webkit-details-marker { display: none; }
+        .advanced-details > summary::before {
+          content: '\\25B8';
+          display: inline-block;
+          width: 12px;
+          color: #999;
+          transition: transform 0.15s ease;
+        }
+        .advanced-details[open] > summary::before { transform: rotate(90deg); }
+        .advanced-details > summary:hover { color: #154733; }
 
         .btn-primary {
           width: 100%;
@@ -637,6 +670,35 @@ sam_explore <- function(
       ),
       shiny::uiOutput("tile_warning"),
 
+      shiny::tags$details(
+        class = "advanced-details",
+        shiny::tags$summary("Advanced"),
+        shiny::div(class = "section-label", "Detection Quality"),
+        shiny::radioButtons(
+          "detection_quality",
+          label = NULL,
+          choices = c(
+            "Fast" = "fast",
+            "Balanced" = "balanced",
+            "Accurate" = "accurate"
+          ),
+          selected = quality,
+          inline = TRUE
+        ),
+        shiny::p(
+          class = "help-text",
+          "Fast: single pass, no chunking. Balanced: chunked with moderate overlap. Accurate: smaller chunks, more overlap."
+        ),
+        shiny::div(
+          class = "info-row",
+          shiny::span(class = "info-label", "Est. chunks:"),
+          shiny::span(
+            class = "info-value",
+            shiny::textOutput("chunk_estimate", inline = TRUE)
+          )
+        )
+      ),
+
       # Detect button
       shiny::actionButton("detect", "Detect in View", class = "btn-primary"),
 
@@ -665,6 +727,54 @@ sam_explore <- function(
       shiny::div(class = "status-box", shiny::uiOutput("status_ui"))
     )
   )
+}
+
+
+#' Resolve detection quality policy for the interactive explorer
+#' @noRd
+.explore_detection_policy <- function(quality = "fast") {
+  switch(
+    quality,
+    fast = list(
+      quality = "fast",
+      chunked = FALSE,
+      chunk_size = NULL,
+      chunk_overlap = NULL,
+      max_dim = 2500,
+      max_tiles = 64
+    ),
+    balanced = list(
+      quality = "balanced",
+      chunked = TRUE,
+      chunk_size = 1400,
+      chunk_overlap = 96,
+      max_dim = Inf,
+      max_tiles = 500
+    ),
+    accurate = list(
+      quality = "accurate",
+      chunked = TRUE,
+      chunk_size = 1000,
+      chunk_overlap = 160,
+      max_dim = Inf,
+      max_tiles = 500
+    ),
+    .explore_detection_policy("fast")
+  )
+}
+
+
+#' Estimate detection chunks for an interactive bbox
+#' @noRd
+.explore_chunk_estimate <- function(bbox, zoom, source, quality = "fast") {
+  dims <- .calc_bbox_pixels(bbox, zoom, source)
+  policy <- .explore_detection_policy(quality)
+  if (isFALSE(policy$chunked)) {
+    return(list(n_chunks = 1L, dims = dims, policy = policy))
+  }
+  n_chunks <- ceiling(dims$width / policy$chunk_size) *
+    ceiling(dims$height / policy$chunk_size)
+  list(n_chunks = n_chunks, dims = dims, policy = policy)
 }
 
 
@@ -756,7 +866,7 @@ sam_explore <- function(
           ) |>
           mapgl::move_layer(
             "esri-satellite-layer",
-            "tunnel-service-track-casing"
+            "road_oneway"
           )
       })
     }
@@ -764,13 +874,17 @@ sam_explore <- function(
     # Add draw control once map is ready
     shiny::observe({
       shiny::req(input$map_bbox)
-      get_proxy() |>
+      proxy <- get_proxy()
+      proxy |>
         mapgl::add_draw_control(
           position = "top-left",
           displayControlsDefault = FALSE,
           controls = list(polygon = TRUE, trash = TRUE),
           rectangle = TRUE
         )
+      if (source == "esri") {
+        .style_road_labels_for_satellite(proxy)
+      }
     }) |>
       shiny::bindEvent(input$map_bbox, once = TRUE)
 
@@ -976,6 +1090,23 @@ sam_explore <- function(
       )
     })
 
+    output$chunk_estimate <- shiny::renderText({
+      bounds <- input$map_bbox
+      if (is.null(bounds)) return("-")
+
+      ext_zoom <- as.integer(input$extraction_zoom %||% 17)
+      bbox <- c(bounds$xmin, bounds$ymin, bounds$xmax, bounds$ymax)
+      quality <- input$detection_quality %||% "fast"
+
+      tryCatch(
+        {
+          est <- .explore_chunk_estimate(bbox, ext_zoom, source, quality)
+          format(est$n_chunks, big.mark = ",")
+        },
+        error = function(e) "-"
+      )
+    })
+
     # Tile warning
     output$tile_warning <- shiny::renderUI({
       bounds <- input$map_bbox
@@ -983,19 +1114,30 @@ sam_explore <- function(
 
       ext_zoom <- as.integer(input$extraction_zoom %||% 17)
       bbox <- c(bounds$xmin, bounds$ymin, bounds$xmax, bounds$ymax)
+      quality <- input$detection_quality %||% "fast"
 
       tryCatch(
         {
-          dims <- .calc_bbox_pixels(bbox, ext_zoom, source)
+          est <- .explore_chunk_estimate(bbox, ext_zoom, source, quality)
+          dims <- est$dims
+          policy <- est$policy
           n_tiles <- dims$n_tiles_x * dims$n_tiles_y
 
-          if (n_tiles > 500) {
+          if (isFALSE(policy$chunked) &&
+              (max(dims$width, dims$height) > policy$max_dim ||
+               n_tiles > policy$max_tiles)) {
+            shiny::div(
+              class = "status-box status-warning",
+              style = "margin-top: 6px; padding: 6px 8px;",
+              "Fast mode is too large for this view. Switch to Balanced or zoom in."
+            )
+          } else if (n_tiles > 500) {
             shiny::div(
               class = "status-box status-error",
               style = "margin-top: 6px; padding: 6px 8px;",
               "Too many tiles. Zoom in or use lower extraction zoom."
             )
-          } else if (n_tiles > 200) {
+          } else if (n_tiles > 200 || est$n_chunks > 12) {
             shiny::div(
               class = "status-box status-warning",
               style = "margin-top: 6px; padding: 6px 8px;",
@@ -1093,15 +1235,32 @@ sam_explore <- function(
 
       bbox <- c(bounds$xmin, bounds$ymin, bounds$xmax, bounds$ymax)
       ext_zoom <- as.integer(input$extraction_zoom %||% 17)
+      quality <- input$detection_quality %||% "fast"
+      quality_estimate <- tryCatch(
+        .explore_chunk_estimate(bbox, ext_zoom, source, quality),
+        error = function(e) NULL
+      )
+      policy <- if (!is.null(quality_estimate)) {
+        quality_estimate$policy
+      } else {
+        .explore_detection_policy(quality)
+      }
 
       # Check tile count
       tryCatch(
         {
-          dims <- .calc_bbox_pixels(bbox, ext_zoom, source)
+          dims <- quality_estimate$dims %||% .calc_bbox_pixels(bbox, ext_zoom, source)
           n_tiles <- dims$n_tiles_x * dims$n_tiles_y
           if (n_tiles > 500) {
             rv$status <- "Area too large. Zoom in or use lower extraction zoom."
             rv$status_type <- "error"
+            return()
+          }
+          if (isFALSE(policy$chunked) &&
+              (max(dims$width, dims$height) > policy$max_dim ||
+               n_tiles > policy$max_tiles)) {
+            rv$status <- "Fast mode is too large for this view. Switch to Balanced or zoom in."
+            rv$status_type <- "warning"
             return()
           }
         },
@@ -1136,26 +1295,66 @@ sam_explore <- function(
 
             # Run detection for each prompt and combine results
             all_results <- list()
-            for (p in active_prompts) {
-              rv$status <- sprintf("Detecting '%s'...", p$text)
-              # Build args list, merging with user-provided detect_args
-              # Use downloaded image instead of bbox to avoid re-downloading
-              call_args <- c(
-                list(
-                  image = img_path,
-                  text = p$text,
-                  threshold = input$threshold,
-                  chunked = TRUE
-                ),
-                detect_args
+
+            if (isFALSE(policy$chunked) && length(active_prompts) > 1) {
+              rv$status <- "Detecting prompts..."
+              module <- .get_module()
+              img_array <- .read_image_array(img_path)
+              prompt_text <- vapply(active_prompts, `[[`, character(1), "text")
+              py_results <- module$detect_text_multi(
+                img_array = img_array,
+                text_prompts = as.list(prompt_text),
+                threshold = input$threshold
               )
-              det <- do.call(sam_detect, call_args)
-              if (!is.null(det)) {
-                det_sf <- sam_as_sf(det)
-                if (!is.null(det_sf) && nrow(det_sf) > 0) {
-                  det_sf$prompt <- p$text
-                  det_sf$prompt_color <- p$color
-                  all_results <- c(all_results, list(det_sf))
+
+              template <- terra::rast(img_path)
+              img_extent <- as.vector(terra::ext(template))
+              img_crs <- terra::crs(template, proj = TRUE)
+
+              for (idx in seq_along(active_prompts)) {
+                p <- active_prompts[[idx]]
+                res <- py_results[[idx]]
+                if (!is.null(res) && res$count > 0) {
+                  det <- new_geosam(
+                    image_path = normalizePath(img_path),
+                    masks = res$masks,
+                    scores = as.numeric(res$scores),
+                    prompt = list(type = "text", value = p$text),
+                    extent = img_extent,
+                    crs = img_crs,
+                    source = source,
+                    history = list(list(action = "interactive_fast_multi_prompt"))
+                  )
+                  det_sf <- sam_as_sf(det)
+                  if (!is.null(det_sf) && nrow(det_sf) > 0) {
+                    det_sf$prompt <- p$text
+                    det_sf$prompt_color <- p$color
+                    all_results <- c(all_results, list(det_sf))
+                  }
+                }
+              }
+            } else {
+              for (p in active_prompts) {
+                rv$status <- sprintf("Detecting '%s'...", p$text)
+                call_args <- c(
+                  list(
+                    image = img_path,
+                    text = p$text,
+                    threshold = input$threshold,
+                    chunked = policy$chunked,
+                    chunk_size = policy$chunk_size,
+                    chunk_overlap = policy$chunk_overlap
+                  ),
+                  detect_args
+                )
+                det <- do.call(sam_detect, call_args)
+                if (!is.null(det)) {
+                  det_sf <- sam_as_sf(det)
+                  if (!is.null(det_sf) && nrow(det_sf) > 0) {
+                    det_sf$prompt <- p$text
+                    det_sf$prompt_color <- p$color
+                    all_results <- c(all_results, list(det_sf))
+                  }
                 }
               }
             }

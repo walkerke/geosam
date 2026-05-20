@@ -10,6 +10,7 @@ sam_explore(
   bbox = NULL,
   zoom = 15,
   units = c("metric", "imperial"),
+  quality = c("balanced", "fast", "accurate"),
   ...
 )
 }
@@ -30,6 +31,11 @@ If provided, map will zoom to this extent.}
 
 \item{units}{Unit system for the scale bar and area display: \code{"metric"}
 (km/m) or \code{"imperial"} (mi/ft). Default is \code{"metric"}.}
+
+\item{quality}{Initial detection quality preset: \code{"balanced"} (default,
+chunked with moderate overlap), \code{"fast"} (single-pass, no chunking — best
+for small areas), or \code{"accurate"} (chunked with smaller tiles and more
+overlap). Exposed in the UI under "Advanced".}
 
 \item{...}{Additional arguments passed to \code{sam_detect()}. Useful for setting
 \code{min_area}, \code{max_area}, or other detection parameters.}

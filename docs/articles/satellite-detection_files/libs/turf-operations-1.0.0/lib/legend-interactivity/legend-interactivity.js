@@ -38,49 +38,106 @@ function initializeLegendInteractivity(map, mapId, config) {
 
     var layerState = window._mapglLayerState[mapId];
 
-    // Initialize interactive filter state for this layer
-    if (config.layerId && !layerState.interactiveFilters[config.layerId]) {
-        var originalFilter = null;
-        try {
-            originalFilter = map.getFilter(config.layerId);
-        } catch (e) {
-            // Layer may not exist yet
+    // Ensure interactiveFilters exists (state object may have been created
+    // by map init code without this property)
+    if (!layerState.interactiveFilters) {
+        layerState.interactiveFilters = {};
+    }
+
+    // Normalize layerId to array for multi-layer support
+    var layerIds = Array.isArray(config.layerId) ? config.layerId : [config.layerId];
+
+    // Defer if style isn't loaded or any specified layer doesn't exist yet
+    // (handles race conditions in Shiny where layers are added via proxy)
+    var allLayersExist = map.isStyleLoaded() && layerIds.every(function(lid) {
+        return !lid || map.getLayer(lid);
+    });
+    if (!allLayersExist) {
+        var retryCount = config._retryCount || 0;
+        if (retryCount < 10) {
+            config._retryCount = retryCount + 1;
+            map.once('idle', function() {
+                initializeLegendInteractivity(map, mapId, config);
+            });
+        } else {
+            console.warn(
+                "Legend interactivity: not all layers found after retries. " +
+                "Missing layers for legend: " + config.legendId
+            );
         }
-        layerState.interactiveFilters[config.layerId] = {
-            originalFilter: originalFilter,
-            legendFilters: {}
-        };
+        return;
     }
 
-    // Determine filter column - use provided or auto-detect
+    // Initialize interactive filter state for each layer
+    layerIds.forEach(function(lid) {
+        if (lid && !layerState.interactiveFilters[lid]) {
+            var originalFilter = null;
+            try {
+                originalFilter = map.getFilter(lid);
+            } catch (e) {
+                // Layer may not exist yet
+            }
+            layerState.interactiveFilters[lid] = {
+                originalFilter: originalFilter,
+                legendFilters: {}
+            };
+        }
+    });
+
+    var filterEnabled = config.filter !== false;
+
+    // Determine filter/color columns - use provided or auto-detect from first available layer
     var filterColumn = config.filterColumn;
-    if (!filterColumn && config.layerId) {
-        filterColumn = detectFilterColumn(map, config.layerId);
+    var colorColumn = config.colorColumn || filterColumn;
+    if (!filterColumn && (filterEnabled || config.rampPicker)) {
+        for (var i = 0; i < layerIds.length; i++) {
+            filterColumn = detectFilterColumn(map, layerIds[i]);
+            if (filterColumn) break;
+        }
+    }
+    if (!colorColumn) {
+        colorColumn = filterColumn;
     }
 
-    if (!filterColumn) {
+    if (filterEnabled && !filterColumn) {
         console.warn(
             "Could not determine filter column for interactive legend. " +
                 "Please provide filter_column parameter."
         );
         return;
     }
+    if (config.rampPicker && !colorColumn) {
+        console.warn(
+            "Could not determine color column for ramp picker. " +
+                "Please provide color_column parameter."
+        );
+        return;
+    }
+
+    // Store normalized layerIds in config for use by init functions
+    config._layerIds = layerIds;
 
     // Store config for later reference
     legendElement._interactivityConfig = {
         legendId: config.legendId,
-        layerId: config.layerId,
+        layerIds: layerIds,
         type: config.type,
         values: config.values,
         colors: config.colors,
         filterColumn: filterColumn,
+        colorColumn: colorColumn,
         mapId: mapId
     };
 
-    if (config.type === "categorical") {
+    if (config.type === "categorical" && filterEnabled) {
         initCategoricalLegend(map, mapId, legendElement, filterColumn, config);
     } else if (config.type === "continuous") {
-        initContinuousLegend(map, mapId, legendElement, filterColumn, config);
+        if (filterEnabled) {
+            initContinuousLegend(map, mapId, legendElement, filterColumn, config);
+        }
+        if (config.rampPicker) {
+            initColorRampPicker(map, mapId, legendElement, colorColumn, config);
+        }
     }
 }
 
@@ -173,11 +230,204 @@ function parseExpressionForColumn(expr) {
     return null;
 }
 
+function expressionUsesColumn(expr, column) {
+    return parseExpressionForColumn(expr) === column;
+}
+
+function detectColorPaintProperty(map, layerId, column) {
+    var colorProps = [
+        "fill-color",
+        "circle-color",
+        "line-color",
+        "fill-extrusion-color"
+    ];
+    var fallback = null;
+
+    for (var i = 0; i < colorProps.length; i++) {
+        var prop = colorProps[i];
+        try {
+            var value = map.getPaintProperty(layerId, prop);
+            if (value === undefined || value === null) continue;
+            if (!fallback) fallback = prop;
+            if (Array.isArray(value) && (!column || expressionUsesColumn(value, column))) {
+                return prop;
+            }
+        } catch (e) {
+            // Paint property does not apply to this layer type.
+        }
+    }
+
+    return fallback;
+}
+
+function buildInterpolateExpression(column, values, colors, naColor) {
+    var expr = ["interpolate", ["linear"], ["get", column]];
+    for (var i = 0; i < values.length; i++) {
+        expr.push(Number(values[i]));
+        expr.push(colors[i]);
+    }
+
+    if (naColor) {
+        return ["case", ["==", ["get", column], null], naColor, expr];
+    }
+
+    return expr;
+}
+
+function setPaintPropertyPreservingHover(map, mapId, layerId, propertyName, value) {
+    var currentPaintProperty = null;
+    try {
+        currentPaintProperty = map.getPaintProperty(layerId, propertyName);
+    } catch (e) {
+        return;
+    }
+
+    if (
+        currentPaintProperty &&
+        Array.isArray(currentPaintProperty) &&
+        currentPaintProperty[0] === "case" &&
+        Array.isArray(currentPaintProperty[1]) &&
+        currentPaintProperty[1][0] === "boolean"
+    ) {
+        map.setPaintProperty(layerId, propertyName, [
+            "case",
+            currentPaintProperty[1],
+            currentPaintProperty[2],
+            value
+        ]);
+    } else {
+        map.setPaintProperty(layerId, propertyName, value);
+    }
+
+    var layerState = window._mapglLayerState && window._mapglLayerState[mapId];
+    if (layerState) {
+        if (!layerState.paintProperties[layerId]) {
+            layerState.paintProperties[layerId] = {};
+        }
+        layerState.paintProperties[layerId][propertyName] = value;
+    }
+}
+
+function gradientFromColors(colors) {
+    return "linear-gradient(to right, " + colors.join(", ") + ")";
+}
+
+function initColorRampPicker(map, mapId, legendElement, colorColumn, config) {
+    var picker = legendElement.querySelector(".mapgl-ramp-picker");
+    var gradientBar = legendElement.querySelector(".legend-gradient");
+    if (!picker || !gradientBar || !config.colorRamps) return;
+    if (picker._mapglRampPickerInitialized) return;
+    picker._mapglRampPickerInitialized = true;
+
+    var options = picker.querySelectorAll(".mapgl-ramp-picker-option");
+    var layerIds = config._layerIds;
+    var values = (config.values || []).map(Number);
+    var selectedRamp = config.selectedRamp || Object.keys(config.colorRamps)[0];
+    var colorPropertyByLayer = {};
+
+    layerIds.forEach(function(layerId) {
+        colorPropertyByLayer[layerId] =
+            config.colorProperty || detectColorPaintProperty(map, layerId, colorColumn);
+    });
+
+    function closePicker() {
+        picker.classList.remove("mapgl-ramp-picker-open");
+        gradientBar.setAttribute("aria-expanded", "false");
+    }
+
+    function openPicker() {
+        picker.classList.add("mapgl-ramp-picker-open");
+        gradientBar.setAttribute("aria-expanded", "true");
+    }
+
+    function togglePicker(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (picker.classList.contains("mapgl-ramp-picker-open")) {
+            closePicker();
+        } else {
+            openPicker();
+        }
+    }
+
+    gradientBar.addEventListener("click", togglePicker);
+    gradientBar.addEventListener("keydown", function(e) {
+        if (e.key === "Enter" || e.key === " ") {
+            togglePicker(e);
+        } else if (e.key === "Escape") {
+            closePicker();
+        }
+    });
+
+    document.addEventListener("click", function(e) {
+        if (!picker.contains(e.target) && e.target !== gradientBar) {
+            closePicker();
+        }
+    });
+
+    function applyRamp(rampName) {
+        var colors = config.colorRamps[rampName];
+        if (!colors) return;
+        selectedRamp = rampName;
+
+        var gradient = gradientFromColors(colors);
+        gradientBar.style.background = gradient;
+
+        options.forEach(function(option) {
+            option.setAttribute(
+                "data-selected",
+                String(option.getAttribute("data-ramp-name") === rampName)
+            );
+        });
+
+        layerIds.forEach(function(layerId) {
+            var propertyName = colorPropertyByLayer[layerId];
+            if (!propertyName) {
+                console.warn("No supported color paint property found for layer:", layerId);
+                return;
+            }
+            var expression = buildInterpolateExpression(
+                colorColumn,
+                values,
+                colors,
+                config.naColor || config.na_color
+            );
+            setPaintPropertyPreservingHover(map, mapId, layerId, propertyName, expression);
+        });
+
+        if (typeof HTMLWidgets !== "undefined" && HTMLWidgets.shinyMode) {
+            Shiny.setInputValue(mapId + "_legend_ramp", {
+                legendId: config.legendId,
+                layerId: layerIds.length === 1 ? layerIds[0] : layerIds,
+                column: colorColumn,
+                property: layerIds.length === 1 ? colorPropertyByLayer[layerIds[0]] : colorPropertyByLayer,
+                ramp: rampName,
+                colors: colors,
+                timestamp: Date.now()
+            });
+        }
+    }
+
+    options.forEach(function(option) {
+        option.addEventListener("click", function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            applyRamp(option.getAttribute("data-ramp-name"));
+            closePicker();
+        });
+    });
+
+    if (selectedRamp && config.colorRamps[selectedRamp]) {
+        applyRamp(selectedRamp);
+    }
+}
+
 /**
  * Initialize categorical legend interactivity
  */
 function initCategoricalLegend(map, mapId, legendElement, filterColumn, config) {
     var items = legendElement.querySelectorAll(".legend-item");
+    var layerIds = config._layerIds;
 
     // Use filterValues for actual filtering, values for display
     var filterValues = config.filterValues || config.values;
@@ -192,13 +442,15 @@ function initCategoricalLegend(map, mapId, legendElement, filterColumn, config) 
     }
 
     var layerState = window._mapglLayerState[mapId];
-    var interactiveState = layerState.interactiveFilters[config.layerId];
 
-    // Store category state
-    interactiveState.enabledIndices = enabledIndices;
-    interactiveState.filterValues = filterValues;
-    interactiveState.breaks = breaks;
-    interactiveState.filterColumn = filterColumn;
+    // Store category state for each layer
+    layerIds.forEach(function(lid) {
+        var interactiveState = layerState.interactiveFilters[lid];
+        interactiveState.enabledIndices = enabledIndices;
+        interactiveState.filterValues = filterValues;
+        interactiveState.breaks = breaks;
+        interactiveState.filterColumn = filterColumn;
+    });
 
     // Store original colors for each item
     var originalColors = {};
@@ -246,28 +498,31 @@ function initCategoricalLegend(map, mapId, legendElement, filterColumn, config) 
                 }
             }
 
-            // Apply filter - use breaks for range-based, filterValues for categorical
-            if (breaks && breaks.length > 0) {
-                applyRangeBasedCategoricalFilter(
-                    map,
-                    mapId,
-                    config.layerId,
-                    filterColumn,
-                    enabledIndices,
-                    breaks,
-                    interactiveState.originalFilter
-                );
-            } else {
-                applyCategoricalFilter(
-                    map,
-                    mapId,
-                    config.layerId,
-                    filterColumn,
-                    enabledIndices,
-                    filterValues,
-                    interactiveState.originalFilter
-                );
-            }
+            // Apply filter to all associated layers
+            layerIds.forEach(function(lid) {
+                var interactiveState = layerState.interactiveFilters[lid];
+                if (breaks && breaks.length > 0) {
+                    applyRangeBasedCategoricalFilter(
+                        map,
+                        mapId,
+                        lid,
+                        filterColumn,
+                        enabledIndices,
+                        breaks,
+                        interactiveState.originalFilter
+                    );
+                } else {
+                    applyCategoricalFilter(
+                        map,
+                        mapId,
+                        lid,
+                        filterColumn,
+                        enabledIndices,
+                        filterValues,
+                        interactiveState.originalFilter
+                    );
+                }
+            });
 
             // Update reset button visibility
             updateResetButton(legendElement, enabledIndices.size < numCategories);
@@ -281,7 +536,7 @@ function initCategoricalLegend(map, mapId, legendElement, filterColumn, config) 
                 });
                 Shiny.setInputValue(mapId + "_legend_filter", {
                     legendId: config.legendId,
-                    layerId: config.layerId,
+                    layerId: layerIds.length === 1 ? layerIds[0] : layerIds,
                     type: "categorical",
                     column: filterColumn,
                     enabledValues: enabledFilterValues,
@@ -307,13 +562,16 @@ function initCategoricalLegend(map, mapId, legendElement, filterColumn, config) 
             enabledIndices.add(i);
         }
 
-        // Reset filter to original
-        if (interactiveState.originalFilter) {
-            map.setFilter(config.layerId, interactiveState.originalFilter);
-        } else {
-            map.setFilter(config.layerId, null);
-        }
-        layerState.filters[config.layerId] = interactiveState.originalFilter;
+        // Reset filter to original for all layers
+        layerIds.forEach(function(lid) {
+            var interactiveState = layerState.interactiveFilters[lid];
+            if (interactiveState.originalFilter) {
+                map.setFilter(lid, interactiveState.originalFilter);
+            } else {
+                map.setFilter(lid, null);
+            }
+            layerState.filters[lid] = interactiveState.originalFilter;
+        });
 
         updateResetButton(legendElement, false);
 
@@ -321,7 +579,7 @@ function initCategoricalLegend(map, mapId, legendElement, filterColumn, config) 
         if (typeof HTMLWidgets !== "undefined" && HTMLWidgets.shinyMode) {
             Shiny.setInputValue(mapId + "_legend_filter", {
                 legendId: config.legendId,
-                layerId: config.layerId,
+                layerId: layerIds.length === 1 ? layerIds[0] : layerIds,
                 type: "categorical",
                 column: filterColumn,
                 enabledValues: filterValues.slice(),
@@ -343,17 +601,20 @@ function initContinuousLegend(map, mapId, legendElement, filterColumn, config) {
     var values = config.values.map(Number);
     var minValue = Math.min.apply(null, values);
     var maxValue = Math.max.apply(null, values);
+    var layerIds = config._layerIds;
 
     var layerState = window._mapglLayerState[mapId];
-    var interactiveState = layerState.interactiveFilters[config.layerId];
 
-    // Store range state
-    interactiveState.rangeMin = minValue;
-    interactiveState.rangeMax = maxValue;
-    interactiveState.originalMin = minValue;
-    interactiveState.originalMax = maxValue;
-    interactiveState.filterColumn = filterColumn;
-    interactiveState.values = values; // Store all values for piecewise interpolation
+    // Store range state for each layer
+    layerIds.forEach(function(lid) {
+        var interactiveState = layerState.interactiveFilters[lid];
+        interactiveState.rangeMin = minValue;
+        interactiveState.rangeMax = maxValue;
+        interactiveState.originalMin = minValue;
+        interactiveState.originalMax = maxValue;
+        interactiveState.filterColumn = filterColumn;
+        interactiveState.values = values;
+    });
 
     // Find the gradient bar
     var gradientBar = legendElement.querySelector(".legend-gradient");
@@ -505,31 +766,33 @@ function initContinuousLegend(map, mapId, legendElement, filterColumn, config) {
             var minVal = positionToValue(selectionState.leftPercent);
             var maxVal = positionToValue(selectionState.rightPercent);
 
-            interactiveState.rangeMin = minVal;
-            interactiveState.rangeMax = maxVal;
-
             // Check if at full range (within tolerance) - if so, clear filter instead
             // This handles cases where legend breaks are rounded but data has more precision
             var isAtFullRange =
                 selectionState.leftPercent <= 0.5 &&
                 selectionState.rightPercent >= 99.5;
 
-            if (isAtFullRange) {
-                // Restore original filter (no range constraint)
-                map.setFilter(config.layerId, interactiveState.originalFilter);
-                var layerState = window._mapglLayerState[mapId];
-                layerState.filters[config.layerId] = interactiveState.originalFilter;
-            } else {
-                applyRangeFilter(
-                    map,
-                    mapId,
-                    config.layerId,
-                    filterColumn,
-                    minVal,
-                    maxVal,
-                    interactiveState.originalFilter
-                );
-            }
+            // Apply to all associated layers
+            layerIds.forEach(function(lid) {
+                var interactiveState = layerState.interactiveFilters[lid];
+                interactiveState.rangeMin = minVal;
+                interactiveState.rangeMax = maxVal;
+
+                if (isAtFullRange) {
+                    map.setFilter(lid, interactiveState.originalFilter);
+                    layerState.filters[lid] = interactiveState.originalFilter;
+                } else {
+                    applyRangeFilter(
+                        map,
+                        mapId,
+                        lid,
+                        filterColumn,
+                        minVal,
+                        maxVal,
+                        interactiveState.originalFilter
+                    );
+                }
+            });
 
             // Update reset button visibility
             var hasFilter = !isAtFullRange;
@@ -539,7 +802,7 @@ function initContinuousLegend(map, mapId, legendElement, filterColumn, config) {
             if (typeof HTMLWidgets !== "undefined" && HTMLWidgets.shinyMode) {
                 Shiny.setInputValue(mapId + "_legend_filter", {
                     legendId: config.legendId,
-                    layerId: config.layerId,
+                    layerId: layerIds.length === 1 ? layerIds[0] : layerIds,
                     type: "continuous",
                     column: filterColumn,
                     range: [minVal, maxVal],
@@ -692,16 +955,19 @@ function initContinuousLegend(map, mapId, legendElement, filterColumn, config) {
         selectionState.rightPercent = 100;
         updateVisuals();
 
-        interactiveState.rangeMin = minValue;
-        interactiveState.rangeMax = maxValue;
+        // Reset filter to original for all layers
+        layerIds.forEach(function(lid) {
+            var interactiveState = layerState.interactiveFilters[lid];
+            interactiveState.rangeMin = minValue;
+            interactiveState.rangeMax = maxValue;
 
-        // Reset filter to original
-        if (interactiveState.originalFilter) {
-            map.setFilter(config.layerId, interactiveState.originalFilter);
-        } else {
-            map.setFilter(config.layerId, null);
-        }
-        layerState.filters[config.layerId] = interactiveState.originalFilter;
+            if (interactiveState.originalFilter) {
+                map.setFilter(lid, interactiveState.originalFilter);
+            } else {
+                map.setFilter(lid, null);
+            }
+            layerState.filters[lid] = interactiveState.originalFilter;
+        });
 
         updateResetButton(legendElement, false);
 
@@ -709,7 +975,7 @@ function initContinuousLegend(map, mapId, legendElement, filterColumn, config) {
         if (typeof HTMLWidgets !== "undefined" && HTMLWidgets.shinyMode) {
             Shiny.setInputValue(mapId + "_legend_filter", {
                 legendId: config.legendId,
-                layerId: config.layerId,
+                layerId: layerIds.length === 1 ? layerIds[0] : layerIds,
                 type: "continuous",
                 column: filterColumn,
                 range: [minValue, maxValue],
@@ -954,7 +1220,7 @@ function makeLegendDraggable(legend) {
 
     function onMouseDown(e) {
         // Don't start drag if clicking on interactive elements (including slider handles)
-        if (e.target.closest('.legend-item, .legend-reset-btn, .continuous-slider-container, .legend-gradient-handle, .legend-gradient-middle, .legend-gradient-overlay-container, input, button')) {
+        if (e.target.closest('.legend-item, .legend-reset-btn, .continuous-slider-container, .legend-gradient, .legend-gradient-handle, .legend-gradient-middle, .legend-gradient-overlay-container, .mapgl-ramp-picker, input, button')) {
             return;
         }
 
@@ -1027,7 +1293,7 @@ function makeLegendDraggable(legend) {
 
         var touch = e.touches[0];
         // Don't start drag if touching interactive elements (including slider handles)
-        if (e.target.closest('.legend-item, .legend-reset-btn, .continuous-slider-container, .legend-gradient-handle, .legend-gradient-middle, .legend-gradient-overlay-container, input, button')) {
+        if (e.target.closest('.legend-item, .legend-reset-btn, .continuous-slider-container, .legend-gradient, .legend-gradient-handle, .legend-gradient-middle, .legend-gradient-overlay-container, .mapgl-ramp-picker, input, button')) {
             return;
         }
 
@@ -1088,4 +1354,34 @@ function makeLegendDraggable(legend) {
     legend.addEventListener('touchstart', onTouchStart, { passive: false });
     legend.addEventListener('touchmove', onTouchMove, { passive: false });
     legend.addEventListener('touchend', onTouchEnd);
+}
+
+/* ============================================================
+ * Collapsible legend toggle
+ *
+ * Single document-level delegated handler so this works for any
+ * legend emitted with collapsible = TRUE, regardless of how/when
+ * the legend HTML was inserted (static widget render, proxy message,
+ * compare view). Guarded so repeated script loads don't double-bind.
+ * ============================================================ */
+if (!window._mapglLegendCollapseInstalled) {
+    window._mapglLegendCollapseInstalled = true;
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest && e.target.closest('.mapgl-legend-collapse-btn');
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        var legend = btn.closest('.mapboxgl-legend');
+        if (!legend) return;
+
+        var nowCollapsed = legend.classList.toggle('mapgl-legend-collapsed');
+        btn.setAttribute('aria-expanded', nowCollapsed ? 'false' : 'true');
+        btn.setAttribute(
+            'aria-label',
+            nowCollapsed ? 'Expand legend' : 'Collapse legend'
+        );
+        btn.textContent = nowCollapsed ? '+' : '\u2013';
+    });
 }

@@ -1,0 +1,146 @@
+# Regular image detection
+
+While geosam is built to work with geographic data, the package also
+honors SAM’s core functionality: extracting from photos, screenshots, or
+any image file.
+
+## Basic workflow
+
+To work with non-georeferenced images, use
+[`sam_image()`](https://walker-data.com/geosam/reference/sam_image.md).
+We’ll work with this sample photo for testing which is bundled in the
+package.
+
+![](images/fruit_plate.jpg)
+
+To extract objects from an image, we pass the image path to
+[`sam_image()`](https://walker-data.com/geosam/reference/sam_image.md):
+
+``` r
+
+library(geosam)
+
+# Path to bundled sample image
+fruit <- system.file("extdata", "fruit_plate.jpg", package = "geosam")
+
+# Detect strawberries
+berries <- sam_image(fruit, text = "strawberry")
+
+berries
+```
+
+We get a `geosam_image` object back. This object can be plotted with
+[`plot()`](https://rdrr.io/r/graphics/plot.default.html):
+
+``` r
+
+plot(berries)
+```
+
+![](image-detection_files/figure-html/unnamed-chunk-2-1.png)
+
+SAM3 has found the strawberries. We can also try different prompts on
+the same image, then combine the plots with `add = TRUE`, much as we
+would in typical base R plotting.
+
+Let’s try out different prompts on the same image:
+
+``` r
+
+cherries <- sam_image(fruit, text = "cherry")
+p <- plot(cherries)
+
+chocolate <- sam_image(fruit, text = "chocolate")
+plot(chocolate, add = TRUE, base_img = p, fill = "purple")
+```
+
+![](image-detection_files/figure-html/unnamed-chunk-3-1.png)
+
+## Extracting results
+
+Much like extracted objects from satellite images, we can convert our
+extractions to “spatial” objects in pixel coordinates with
+[`sam_as_sf()`](https://walker-data.com/geosam/reference/sam_as_sf.md).
+Let’s try it out:
+
+``` r
+
+berries_sf <- sam_as_sf(berries)
+berries_sf
+```
+
+    Simple feature collection with 9 features and 3 fields
+    Geometry type: GEOMETRY
+    Dimension:     XY
+    Bounding box:  xmin: 178 ymin: 569 xmax: 694 ymax: 1144
+    CRS:           NA
+      mask_id     score area_px                       geometry
+    1       1 0.9471688   19041 POLYGON ((259 1079, 259 107...
+    2       2 0.8622317   14966 POLYGON ((400 1114, 400 111...
+    3       3 0.9252667   13174 POLYGON ((527 859, 527 858,...
+    4       4 0.9132326   12376 POLYGON ((365 997, 365 996,...
+    5       5 0.9337521   12649 POLYGON ((436 884, 436 883,...
+    6       6 0.9395731   13667 POLYGON ((635 907, 635 906,...
+    7       7 0.8779849   11486 POLYGON ((477 1144, 477 114...
+    8       8 0.8441506   25331 POLYGON ((553 1028, 553 102...
+    9       9 0.9491462   18603 MULTIPOLYGON (((468 646, 46...
+
+Note that the result includes `area_px` (area in square pixels) instead
+of `area_m2`.
+
+## Interactive exploration
+
+For hands-on detection with clicking and drawing you can use
+[`sam_explore_image()`](https://walker-data.com/geosam/reference/sam_explore_image.md).
+Pass an image path and you’ll launch a Shiny gadget that allows you to
+interactively explore your image. The interface uses mapgl and MapLibre
+under the hood, so you can pan and zoom as if it were an interactive
+map. Let’s try it out:
+
+``` r
+
+result <- sam_explore_image(fruit)
+```
+
+The text option allows you to enter up to six text prompts to extract
+interactively from the image. Here, we show an extraction detecting
+cherries, strawberries, nuts, chocolate, glass, and book from the image.
+Our interactive viewer finds all of these objects, and gives us a map
+legend along with pop-ups.
+
+![](images/paste-2.png)
+
+The app also supports “Example” mode where you can draw around objects
+to use as exemplars and “Points” mode where you can click to identify
+objects; see the Interactive vignette for examples of this in action
+with satellite imagery.
+
+When you click “Done”, results are returned as a `geosam_image` object
+to your R session so long as you’ve assigned the result to a variable.
+Let’s take a look at it:
+
+``` r
+
+result
+```
+
+    Simple feature collection with 76 features and 5 fields
+    Geometry type: GEOMETRY
+    Dimension:     XY
+    Bounding box:  xmin: 129 ymin: 0 xmax: 1280 ymax: 1493
+    CRS:           NA
+    First 10 features:
+       mask_id     score area_px   prompt prompt_color                       geometry
+    1        1 0.7182140    8287 cherries      #facc15 MULTIPOLYGON (((1024 753, 1...
+    2        2 0.5578738    3340 cherries      #facc15 POLYGON ((779 901, 779 900,...
+    3        3 0.6574008    2829 cherries      #facc15 POLYGON ((659 961, 659 959,...
+    4        4 0.7631093    8354 cherries      #facc15 POLYGON ((842 825, 842 824,...
+    5        5 0.8512306    9918 cherries      #facc15 POLYGON ((885 1102, 885 110...
+    6        6 0.7179651    3449 cherries      #facc15 POLYGON ((658 729, 658 728,...
+    7        7 0.8434036   10636 cherries      #facc15 POLYGON ((1014 972, 1014 97...
+    8        8 0.8085137    8738 cherries      #facc15 MULTIPOLYGON (((944 1018, 9...
+    9        9 0.7799412    8565 cherries      #facc15 POLYGON ((824 1003, 824 100...
+    10      10 0.7946509    7510 cherries      #facc15 POLYGON ((637 1096, 637 109...
+
+Note that we get back `prompt` and `prompt_color` columns that tell us
+which prompt is associated with each object.

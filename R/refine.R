@@ -19,6 +19,33 @@
 sam_filter <- function(x, min_area = NULL, max_area = NULL, min_score = NULL) {
   validate_geosam(x)
 
+  if (!is.null(x$sf_result)) {
+    sf_result <- x$sf_result
+    keep <- rep(TRUE, nrow(sf_result))
+
+    if (!is.null(min_area) && "area_m2" %in% names(sf_result)) {
+      keep <- keep & sf_result$area_m2 >= min_area
+    }
+    if (!is.null(max_area) && "area_m2" %in% names(sf_result)) {
+      keep <- keep & sf_result$area_m2 <= max_area
+    }
+    if (!is.null(min_score) && "score" %in% names(sf_result)) {
+      keep <- keep & sf_result$score >= min_score
+    }
+
+    result <- x
+    result$sf_result <- sf_result[keep, ]
+    result$scores <- result$sf_result$score %||% numeric()
+    result$history <- c(x$history, list(list(
+      action = "filter",
+      min_area = min_area,
+      max_area = max_area,
+      min_score = min_score,
+      kept = nrow(result$sf_result)
+    )))
+    return(result)
+  }
+
   if (length(x$masks) == 0) {
     return(x)
   }

@@ -21,7 +21,7 @@
 #'   0 = background). If NULL, all points are treated as foreground.
 #' @param exemplar sf polygon representing an example object. SAM3 will find
 #'   all similar objects in the image.
-#' @param source Imagery source if downloading: "mapbox", "esri", or "google".
+#' @param source Imagery source if downloading: "mapbox", "esri", or "maptiler".
 #' @param zoom Tile zoom level for imagery download (17-19 recommended).
 #' @param threshold Detection confidence threshold (0-1). Lower values return
 #'   more detections.
@@ -29,6 +29,10 @@
 #'   - `NULL` (default): Auto-chunk when image >2000px or bbox requires multiple tiles
 #'   - `TRUE`: Force chunked detection
 #'   - `FALSE`: Disable chunking (may cause memory issues for large images)
+#' @param chunk_size Target chunk size in pixels when chunking. Defaults to
+#'   an internal value tuned for SAM3.
+#' @param chunk_overlap Overlap in pixels when chunking. Defaults to an
+#'   internal value that reduces tile-boundary artifacts.
 #'
 #' @param min_area Minimum object area in square meters. Objects smaller than
 #'   this are filtered out. For chunked detection, filtering happens during
@@ -95,6 +99,8 @@ sam_detect <- function(
     zoom = 17,
     threshold = 0.5,
     chunked = NULL,
+    chunk_size = NULL,
+    chunk_overlap = NULL,
     min_area = NULL,
     max_area = NULL
 ) {
@@ -148,6 +154,8 @@ sam_detect <- function(
       source = source,
       zoom = zoom,
       threshold = threshold,
+      target_size = chunk_size %||% 1000,
+      overlap = chunk_overlap %||% 128,
       min_area = min_area,
       max_area = max_area
     ))
@@ -184,6 +192,8 @@ sam_detect <- function(
         image_path = image,
         text = text,
         threshold = threshold,
+        target_size = chunk_size %||% 1000,
+        overlap = chunk_overlap %||% 128,
         min_area = min_area,
         max_area = max_area
       ))
@@ -379,6 +389,7 @@ sam_is_loaded <- function() {
 #' @return A geosam object with merged results
 #' @noRd
 .sam_detect_chunked <- function(bbox, text, source, zoom, threshold,
+                                 target_size = 1000, overlap = 128,
                                  min_area = NULL, max_area = NULL) {
  .ensure_python()
 
@@ -396,8 +407,6 @@ sam_is_loaded <- function() {
   img_height <- terra::nrow(img_rast)
 
   # Step 2: Calculate detection grid based on image size
-  # Target ~1000-1200 pixels per detection tile
-  target_size <- 1000
   tiles_x <- ceiling(img_width / target_size)
   tiles_y <- ceiling(img_height / target_size)
   n_tiles <- tiles_x * tiles_y
@@ -463,11 +472,17 @@ sam_is_loaded <- function() {
       tile_num <- tile_num + 1
       cli::cli_progress_update()
 
-      # Calculate pixel bounds for this chunk (1-indexed)
-      x_start <- (i - 1) * chunk_width + 1
-      x_end <- min(i * chunk_width, img_width)
-      y_start <- (j - 1) * chunk_height + 1
-      y_end <- min(j * chunk_height, img_height)
+      # Calculate core pixel bounds for this chunk (1-indexed)
+      core_x_start <- (i - 1) * chunk_width + 1
+      core_x_end <- min(i * chunk_width, img_width)
+      core_y_start <- (j - 1) * chunk_height + 1
+      core_y_end <- min(j * chunk_height, img_height)
+
+      # Extend chunk bounds to give SAM context near tile boundaries
+      x_start <- max(1, core_x_start - overlap)
+      x_end <- min(img_width, core_x_end + overlap)
+      y_start <- max(1, core_y_start - overlap)
+      y_end <- min(img_height, core_y_end + overlap)
 
       tryCatch({
         # Convert pixel bounds to geographic extent
@@ -481,6 +496,11 @@ sam_is_loaded <- function() {
         chunk_ymin <- full_ext[4] - y_end * yres
 
         chunk_ext <- terra::ext(chunk_xmin, chunk_xmax, chunk_ymin, chunk_ymax)
+
+        core_xmin <- full_ext[1] + (core_x_start - 1) * xres
+        core_xmax <- full_ext[1] + core_x_end * xres
+        core_ymax <- full_ext[4] - (core_y_start - 1) * yres
+        core_ymin <- full_ext[4] - core_y_end * yres
 
         # Extract chunk from full image
         chunk_rast <- terra::crop(img_rast, chunk_ext)
@@ -513,9 +533,31 @@ sam_is_loaded <- function() {
           )
 
           if (!is.null(chunk_sf) && nrow(chunk_sf) > 0) {
-            # Ensure consistent columns for combining
-            chunk_sf <- chunk_sf[, c("score", "area_m2", "geometry")]
-            all_polygons[[length(all_polygons) + 1]] <- chunk_sf
+            # SpatExtent indexing returns named numerics; strip names so
+            # sf::st_bbox parses them by position.
+            core_bbox <- sf::st_bbox(
+              c(xmin = unname(core_xmin), ymin = unname(core_ymin),
+                xmax = unname(core_xmax), ymax = unname(core_ymax)),
+              crs = sf::st_crs(terra::crs(img_rast))
+            )
+            core_poly_wgs84 <- sf::st_transform(
+              sf::st_as_sfc(core_bbox),
+              "+proj=longlat +datum=WGS84 +no_defs"
+            )
+            core_bbox_wgs84 <- sf::st_bbox(core_poly_wgs84)
+            centroids <- suppressWarnings(sf::st_centroid(chunk_sf))
+            centroid_coords <- sf::st_coordinates(centroids)
+            in_core <- centroid_coords[, "X"] >= core_bbox_wgs84["xmin"] &
+              centroid_coords[, "X"] <= core_bbox_wgs84["xmax"] &
+              centroid_coords[, "Y"] >= core_bbox_wgs84["ymin"] &
+              centroid_coords[, "Y"] <= core_bbox_wgs84["ymax"]
+            chunk_sf <- chunk_sf[in_core, ]
+
+            if (nrow(chunk_sf) > 0) {
+              # Ensure consistent columns for combining
+              chunk_sf <- chunk_sf[, c("score", "area_m2", "geometry")]
+              all_polygons[[length(all_polygons) + 1]] <- chunk_sf
+            }
           }
         }
 
@@ -558,7 +600,9 @@ sam_is_loaded <- function() {
     history = list(list(
       action = "chunked_detection",
       n_tiles = n_tiles,
-      grid = c(tiles_x, tiles_y)
+      grid = c(tiles_x, tiles_y),
+      overlap = overlap,
+      target_size = target_size
     ))
   )
 

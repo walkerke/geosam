@@ -4,7 +4,7 @@
 #'
 #' @param areas An sf object with polygon geometries defining areas to process.
 #' @param text Text prompt for detection.
-#' @param source Imagery source: "mapbox", "esri", or "google".
+#' @param source Imagery source: "mapbox", "esri", or "maptiler".
 #' @param zoom Tile zoom level for imagery download.
 #' @param threshold Detection confidence threshold.
 #' @param min_area Minimum object area in square meters.

@@ -20,7 +20,7 @@ sam_batch(
 
 \item{text}{Text prompt for detection.}
 
-\item{source}{Imagery source: "mapbox", "esri", or "google".}
+\item{source}{Imagery source: "mapbox", "esri", or "maptiler".}
 
 \item{zoom}{Tile zoom level for imagery download.}
 
