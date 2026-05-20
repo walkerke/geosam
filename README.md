@@ -15,7 +15,7 @@ library(geosam)
 geosam_install()
 ```
 
-You'll need a [HuggingFace account](https://huggingface.co/) with access to the [SAM3 model](https://huggingface.co/facebook/sam3).
+You'll need a [HuggingFace account](https://huggingface.co/) with access to the gated [SAM3 model](https://huggingface.co/facebook/sam3). Run `geosam_status()` after installation to verify that your token can access the model metadata before downloading weights.
 
 Read through these vignettes to learn how to use the package:
 

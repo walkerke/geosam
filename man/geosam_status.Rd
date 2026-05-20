@@ -4,7 +4,12 @@
 \alias{geosam_status}
 \title{Check geosam Installation Status}
 \usage{
-geosam_status()
+geosam_status(check_access = TRUE)
+}
+\arguments{
+\item{check_access}{Logical. If TRUE, checks whether the configured
+HuggingFace token can access the gated \code{facebook/sam3} model metadata.
+This does not download model weights.}
 }
 \value{
 A list with installation status information, invisibly.

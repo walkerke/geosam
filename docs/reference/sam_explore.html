@@ -9,7 +9,7 @@ run SAM detection."><meta property="og:image" content="https://walker-data.com/g
 
     <a class="navbar-brand me-2" href="../index.html">geosam</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.1.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.2.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -52,6 +52,8 @@ run SAM detection.</p>
 <span>  center <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  bbox <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  zoom <span class="op">=</span> <span class="fl">15</span>,</span>
+<span>  units <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"metric"</span>, <span class="st">"imperial"</span><span class="op">)</span>,</span>
+<span>  quality <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"balanced"</span>, <span class="st">"fast"</span>, <span class="st">"accurate"</span><span class="op">)</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -78,6 +80,18 @@ If provided, map will zoom to this extent.</p></dd>
 
 <dt id="arg-zoom">zoom<a class="anchor" aria-label="anchor" href="#arg-zoom"></a></dt>
 <dd><p>Initial zoom level (default 15).</p></dd>
+
+
+<dt id="arg-units">units<a class="anchor" aria-label="anchor" href="#arg-units"></a></dt>
+<dd><p>Unit system for the scale bar and area display: <code>"metric"</code>
+(km/m) or <code>"imperial"</code> (mi/ft). Default is <code>"metric"</code>.</p></dd>
+
+
+<dt id="arg-quality">quality<a class="anchor" aria-label="anchor" href="#arg-quality"></a></dt>
+<dd><p>Initial detection quality preset: <code>"balanced"</code> (default,
+chunked with moderate overlap), <code>"fast"</code> (single-pass, no chunking — best
+for small areas), or <code>"accurate"</code> (chunked with smaller tiles and more
+overlap). Exposed in the UI under "Advanced".</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
@@ -121,7 +135,7 @@ If provided, map will zoom to this extent.</p></dd>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.9000.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.9000.</p>
 </div>
 
     </footer></div>

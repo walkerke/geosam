@@ -173,6 +173,24 @@ get_imagery <- function(
 #' @noRd
 .download_tile <- function(x, y, zoom, source, api_key) {
   url <- .build_tile_url(x, y, zoom, source, api_key)
+  cache_key <- if (source %in% c("mapbox", "maptiler") && nzchar(api_key %||% "")) {
+    substr(rlang::hash(api_key), 1, 12)
+  } else {
+    "public"
+  }
+  cache_path <- file.path(
+    rappdirs::user_cache_dir("geosam"),
+    "tiles",
+    source,
+    cache_key,
+    as.character(zoom),
+    as.character(x),
+    paste0(y, ".tile")
+  )
+
+  if (file.exists(cache_path)) {
+    return(readBin(cache_path, what = "raw", n = file.info(cache_path)$size))
+  }
 
   tryCatch({
     resp <- httr2::request(url) |>
@@ -180,7 +198,10 @@ get_imagery <- function(
       httr2::req_perform()
 
     if (httr2::resp_status(resp) == 200) {
-      httr2::resp_body_raw(resp)
+      body <- httr2::resp_body_raw(resp)
+      dir.create(dirname(cache_path), recursive = TRUE, showWarnings = FALSE)
+      writeBin(body, cache_path)
+      body
     } else {
       NULL
     }
@@ -217,6 +238,7 @@ get_imagery <- function(
 
   # Download tiles and store in list organized by row
   tile_rows <- list()
+  missing_tiles <- 0L
 
   for (y in y_min:y_max) {
     row_tiles <- list()
@@ -237,10 +259,12 @@ get_imagery <- function(
           row_tiles[[length(row_tiles) + 1]] <- tile_img
         } else {
           # Create blank tile
+          missing_tiles <- missing_tiles + 1L
           row_tiles[[length(row_tiles) + 1]] <- magick::image_blank(tile_size, tile_size, "black")
         }
       } else {
         # Create blank tile
+        missing_tiles <- missing_tiles + 1L
         row_tiles[[length(row_tiles) + 1]] <- magick::image_blank(tile_size, tile_size, "black")
       }
     }
@@ -285,6 +309,10 @@ get_imagery <- function(
   suppressWarnings({
     terra::writeRaster(r, output, overwrite = TRUE, datatype = "INT1U")
   })
+
+  if (missing_tiles > 0) {
+    cli::cli_alert_warning("Filled {missing_tiles} missing imagery tile{?s} with blank pixels.")
+  }
 
   # Clean up
   unlink(tmp_png)
@@ -399,6 +427,24 @@ geosam_clear_cache <- function() {
   }
 
   invisible(TRUE)
+}
+
+
+#' Restyle OpenFreeMap road-name labels for readability over satellite tiles
+#'
+#' The bright style's `highway-name-*` layers use `#666` text with no halo,
+#' which disappears against dark imagery. Brighten the text and add a halo so
+#' street names remain legible without losing their hierarchy.
+#'
+#' @noRd
+.style_road_labels_for_satellite <- function(map) {
+  for (layer in c("highway-name-major", "highway-name-minor", "highway-name-path")) {
+    map <- map |>
+      mapgl::set_paint_property(layer, "text-color", "#f5f5f5") |>
+      mapgl::set_paint_property(layer, "text-halo-color", "rgba(0, 0, 0, 0.7)") |>
+      mapgl::set_paint_property(layer, "text-halo-width", 1.2)
+  }
+  map
 }
 
 

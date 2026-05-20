@@ -46,8 +46,8 @@
 #'
 #' ## SAM3 Access
 #'
-#' You must have HuggingFace access approval for SAM3 model weights.
-#' Request access at: https://huggingface.co/facebook/sam3
+#' You must log in to HuggingFace and accept the gated model terms for SAM3
+#' model weights at: https://huggingface.co/facebook/sam3
 #'
 #' @export
 #'
@@ -106,6 +106,7 @@ geosam_install <- function(
   cli::cli_alert_success("Installation complete!")
 
   cli::cli_alert_info("Restart R and run {.code geosam_status()} to verify.")
+  cli::cli_alert_info("SAM3 model weights are gated on HuggingFace. You still need to log in and accept access terms for {.code facebook/sam3}.")
 
   invisible(TRUE)
 }
@@ -508,6 +509,10 @@ geosam_install <- function(
 #'
 #' Checks the Python environment and reports which features are available.
 #'
+#' @param check_access Logical. If TRUE, checks whether the configured
+#'   HuggingFace token can access the gated `facebook/sam3` model metadata.
+#'   This does not download model weights.
+#'
 #' @return A list with installation status information, invisibly.
 #'
 #' @export
@@ -516,7 +521,7 @@ geosam_install <- function(
 #' \dontrun{
 #' geosam_status()
 #' }
-geosam_status <- function() {
+geosam_status <- function(check_access = TRUE) {
   cli::cli_h1("geosam Status")
 
   status <- list(
@@ -527,9 +532,16 @@ geosam_status <- function() {
     mps_available = FALSE,
     cuda_available = FALSE,
     sam3_available = FALSE,
+    tracker_available = FALSE,
     hf_token_set = FALSE,
+    hf_cached_token_set = FALSE,
+    hf_access_ok = FALSE,
+    hf_access_classification = NULL,
+    hf_access_message = NULL,
+    model_cached = FALSE,
     env_path = NULL,
-    env_method = NULL
+    env_method = NULL,
+    python_path = NULL
   )
 
   # Check for saved environment config
@@ -553,6 +565,7 @@ geosam_status <- function() {
 
   status$python_available <- TRUE
   py_config <- reticulate::py_config()
+  status$python_path <- py_config$python
   cli::cli_alert_success("Python: {py_config$version}")
   cli::cli_alert_info("Path: {py_config$python}")
 
@@ -578,11 +591,26 @@ geosam_status <- function() {
     cli::cli_alert_danger("PyTorch: not available")
   })
 
-  # Check transformers (for SAM3 via HuggingFace)
+  # Check transformers and SAM3 classes
   tryCatch({
     transformers <- reticulate::import("transformers")
-    status$sam3_available <- TRUE
-    cli::cli_alert_success("transformers: available (SAM3 via HuggingFace)")
+    status$sam3_available <- reticulate::py_has_attr(transformers, "Sam3Model") &&
+      reticulate::py_has_attr(transformers, "Sam3Processor")
+    status$tracker_available <- reticulate::py_has_attr(transformers, "Sam3TrackerModel") &&
+      reticulate::py_has_attr(transformers, "Sam3TrackerProcessor")
+
+    if (status$sam3_available) {
+      cli::cli_alert_success("transformers: SAM3 classes available")
+    } else {
+      cli::cli_alert_danger("transformers: installed, but SAM3 classes are missing")
+      cli::cli_alert_info("Update transformers in the geosam environment.")
+    }
+
+    if (status$tracker_available) {
+      cli::cli_alert_success("SAM3 tracker classes: available")
+    } else {
+      cli::cli_alert_warning("SAM3 tracker classes: not available")
+    }
   }, error = function(e) {
     cli::cli_alert_danger("transformers: not available")
   })
@@ -593,8 +621,63 @@ geosam_status <- function() {
     status$hf_token_set <- TRUE
     cli::cli_alert_success("HuggingFace token: configured")
   } else {
-    cli::cli_alert_warning("HuggingFace token: not set (required for SAM3)")
-    cli::cli_alert_info("Set with: {.code Sys.setenv(HF_TOKEN = 'hf_xxxxx')}")
+    cli::cli_alert_warning("HuggingFace token: not set in environment")
+    cli::cli_alert_info("Use {.code huggingface-cli login} or set {.envvar HF_TOKEN}.")
+  }
+
+  if (isTRUE(check_access) && status$torch_available) {
+    cli::cli_h2("SAM3 HuggingFace Access")
+    access <- tryCatch({
+      module_path <- system.file("python", package = "geosam")
+      if (module_path == "") {
+        module_path <- file.path(getwd(), "inst", "python")
+      }
+      reticulate::py_run_string(sprintf(
+        "import sys; sys.path.insert(0, %s)",
+        shQuote(module_path)
+      ))
+      module <- reticulate::import("geosam_core")
+      module$check_model_access("facebook/sam3")
+    }, error = function(e) {
+      list(
+        access_ok = FALSE,
+        classification = "diagnostic_error",
+        message = e$message
+      )
+    })
+
+    status$hf_access_ok <- isTRUE(access$access_ok)
+    status$hf_access_classification <- access$classification %||% "unknown"
+    status$hf_access_message <- access$message %||% ""
+    status$hf_cached_token_set <- isTRUE(access$cached_token_set)
+    status$model_cached <- isTRUE(access$model_cached)
+
+    if (status$hf_cached_token_set && !status$hf_token_set) {
+      cli::cli_alert_success("HuggingFace cached token: found")
+    }
+
+    if (status$model_cached) {
+      cli::cli_alert_success("SAM3 model cache: found")
+    } else {
+      cli::cli_alert_info("SAM3 model cache: not found yet")
+    }
+
+    switch(status$hf_access_classification,
+      ok = cli::cli_alert_success("facebook/sam3 access: verified"),
+      missing_token = cli::cli_alert_warning("facebook/sam3 access: no HuggingFace token found"),
+      gated_not_accepted = cli::cli_alert_warning("facebook/sam3 access: gated terms not accepted for this token"),
+      invalid_token = cli::cli_alert_danger("facebook/sam3 access: token is invalid or unauthorized"),
+      network_error = cli::cli_alert_warning("facebook/sam3 access: network check failed"),
+      missing_huggingface_hub = cli::cli_alert_danger("huggingface_hub: not available"),
+      cli::cli_alert_warning("facebook/sam3 access: {status$hf_access_classification}")
+    )
+
+    if (!status$hf_access_ok) {
+      cli::cli_alert_info("Accept access at: {.url https://huggingface.co/facebook/sam3}")
+      if (nzchar(status$hf_access_message)) {
+        cli::cli_alert_info("Details: {status$hf_access_message}")
+      }
+    }
   }
 
   invisible(status)

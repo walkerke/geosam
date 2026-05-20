@@ -16,6 +16,8 @@ sam_detect(
   zoom = 17,
   threshold = 0.5,
   chunked = NULL,
+  chunk_size = NULL,
+  chunk_overlap = NULL,
   min_area = NULL,
   max_area = NULL
 )
@@ -41,7 +43,7 @@ processed in chunks when using text prompts.}
 \item{exemplar}{sf polygon representing an example object. SAM3 will find
 all similar objects in the image.}
 
-\item{source}{Imagery source if downloading: "mapbox", "esri", or "google".}
+\item{source}{Imagery source if downloading: "mapbox", "esri", or "maptiler".}
 
 \item{zoom}{Tile zoom level for imagery download (17-19 recommended).}
 
@@ -54,6 +56,12 @@ more detections.}
 \item \code{TRUE}: Force chunked detection
 \item \code{FALSE}: Disable chunking (may cause memory issues for large images)
 }}
+
+\item{chunk_size}{Target chunk size in pixels when chunking. Defaults to
+an internal value tuned for SAM3.}
+
+\item{chunk_overlap}{Overlap in pixels when chunking. Defaults to an
+internal value that reduces tile-boundary artifacts.}
 
 \item{min_area}{Minimum object area in square meters. Objects smaller than
 this are filtered out. For chunked detection, filtering happens during
