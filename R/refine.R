@@ -627,30 +627,46 @@ sam_dedupe <- function(x, iou = 0.5, containment = 0.8, trim = FALSE,
   merc <- "+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs"
   proj <- sf::st_transform(sf_obj, merc)
   geoms <- sf::st_geometry(proj)
-  scores <- if ("score" %in% names(sf_obj)) sf_obj$score else rep(1, nrow(sf_obj))
+  n <- nrow(sf_obj)
+  scores <- if ("score" %in% names(sf_obj)) sf_obj$score else rep(1, n)
 
   ord <- order(scores, decreasing = TRUE)
-  keep <- logical(nrow(sf_obj))
-  acc <- NULL
+  rank <- integer(n)
+  rank[ord] <- seq_len(n)
+
+  # Each polygon is trimmed only against intersecting higher-scored
+  # neighbors (via the sparse spatial index), not a global accumulator.
+  # Processing in score order means those neighbors are already final.
+  neighbors <- sf::st_intersects(geoms)
+  keep <- rep(TRUE, n)
 
   for (idx in ord) {
-    g <- geoms[idx]
-    if (!is.null(acc)) {
-      g <- suppressWarnings(sf::st_difference(g, acc))
-      if (length(g) == 0) next
-      # st_difference can return collections; keep polygonal parts only
-      if (!all(sf::st_geometry_type(g) %in% c("POLYGON", "MULTIPOLYGON"))) {
-        g <- suppressWarnings(
-          sf::st_collection_extract(g, "POLYGON")
-        )
-        if (length(g) == 0) next
-        g <- sf::st_combine(g)
-      }
-      if (sum(as.numeric(sf::st_area(g))) < min_sliver) next
+    higher <- neighbors[[idx]]
+    higher <- higher[higher != idx & keep[higher] & rank[higher] < rank[idx]]
+    if (length(higher) == 0) next
+
+    g <- suppressWarnings(
+      sf::st_difference(geoms[idx], sf::st_union(geoms[higher]))
+    )
+
+    if (length(g) == 0) {
+      keep[idx] <- FALSE
+      next
     }
-    keep[idx] <- TRUE
+    # st_difference can return collections; keep polygonal parts only
+    if (!all(sf::st_geometry_type(g) %in% c("POLYGON", "MULTIPOLYGON"))) {
+      g <- suppressWarnings(sf::st_collection_extract(g, "POLYGON"))
+      if (length(g) == 0) {
+        keep[idx] <- FALSE
+        next
+      }
+      g <- sf::st_combine(g)
+    }
+    if (sum(as.numeric(sf::st_area(g))) < min_sliver) {
+      keep[idx] <- FALSE
+      next
+    }
     geoms[idx] <- g
-    acc <- if (is.null(acc)) g else suppressWarnings(sf::st_union(acc, g))
   }
 
   out <- proj
