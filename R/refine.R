@@ -537,3 +537,127 @@ sam_merge_edges <- function(x, buffer = 2, by_prompt = TRUE, seam_aware = TRUE) 
   # Combine results
   do.call(rbind, result_list)
 }
+
+
+#' Suppress Overlapping Duplicate Detections
+#'
+#' SAM3 can return multiple overlapping masks for the same object: nested
+#' partial masks and offset duplicates. This function performs score-ranked
+#' non-maximum suppression: detections are visited in descending score
+#' order, and a detection is dropped when it overlaps an already-kept
+#' detection beyond the IoU threshold, or when most of its own area falls
+#' inside one (the containment test catches nested partial masks that IoU
+#' alone misses).
+#'
+#' Chunked [sam_detect()] results have this suppression applied
+#' automatically; use this function to clean up other results (e.g.
+#' unchunked detections or externally loaded sf data), to re-run with
+#' different thresholds, or to trim residual partial overlaps with
+#' `trim = TRUE`.
+#'
+#' @param x A geosam object or sf object with detection results.
+#' @param iou Intersection-over-union threshold (0-1) above which the
+#'   lower-scored detection is dropped. Default 0.5.
+#' @param containment Fraction (0-1) of a detection's own area that must be
+#'   covered by a higher-scored detection for it to be dropped. Default 0.8.
+#' @param trim If TRUE, residual partial overlaps among the surviving
+#'   detections are removed by subtracting each higher-scored geometry from
+#'   lower-scored ones, so no two output polygons overlap. Pieces smaller
+#'   than `min_sliver` square meters after trimming are dropped. Default
+#'   FALSE.
+#' @param min_sliver Minimum area in square meters for a trimmed geometry
+#'   to be kept. Only used when `trim = TRUE`. Default 5.
+#'
+#' @return An sf object with duplicate detections removed.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' result <- sam_detect(
+#'   bbox = c(-97.33, 32.98, -97.32, 32.99),
+#'   text = "white trailer",
+#'   zoom = 18
+#' )
+#'
+#' clean <- sam_dedupe(result)
+#'
+#' # Strictly non-overlapping output polygons
+#' clean <- sam_dedupe(result, trim = TRUE)
+#' }
+sam_dedupe <- function(x, iou = 0.5, containment = 0.8, trim = FALSE,
+                       min_sliver = 5) {
+  if (inherits(x, "geosam")) {
+    if (!is.null(x$sf_result)) {
+      sf_obj <- x$sf_result
+    } else {
+      sf_obj <- sam_as_sf(x)
+    }
+  } else if (inherits(x, "sf")) {
+    sf_obj <- x
+  } else {
+    cli::cli_abort("x must be a geosam object or sf object.")
+  }
+
+  if (is.null(sf_obj) || nrow(sf_obj) <= 1) {
+    return(sf_obj)
+  }
+
+  result <- .suppress_overlaps(sf_obj, iou = iou, containment = containment)
+
+  if (isTRUE(trim) && nrow(result) > 1) {
+    result <- .trim_overlaps(result, min_sliver = min_sliver)
+  }
+
+  result
+}
+
+
+#' Trim residual overlaps between detections
+#'
+#' Subtracts each higher-scored geometry from lower-scored ones so that no
+#' two polygons overlap. Trimmed pieces smaller than `min_sliver` square
+#' meters are dropped.
+#'
+#' @param sf_obj An sf object with a `score` column.
+#' @param min_sliver Minimum area in square meters to keep after trimming.
+#' @return An sf object with non-overlapping polygons.
+#' @noRd
+.trim_overlaps <- function(sf_obj, min_sliver = 5) {
+  merc <- "+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs"
+  proj <- sf::st_transform(sf_obj, merc)
+  geoms <- sf::st_geometry(proj)
+  scores <- if ("score" %in% names(sf_obj)) sf_obj$score else rep(1, nrow(sf_obj))
+
+  ord <- order(scores, decreasing = TRUE)
+  keep <- logical(nrow(sf_obj))
+  acc <- NULL
+
+  for (idx in ord) {
+    g <- geoms[idx]
+    if (!is.null(acc)) {
+      g <- suppressWarnings(sf::st_difference(g, acc))
+      if (length(g) == 0) next
+      # st_difference can return collections; keep polygonal parts only
+      if (!all(sf::st_geometry_type(g) %in% c("POLYGON", "MULTIPOLYGON"))) {
+        g <- suppressWarnings(
+          sf::st_collection_extract(g, "POLYGON")
+        )
+        if (length(g) == 0) next
+        g <- sf::st_combine(g)
+      }
+      if (sum(as.numeric(sf::st_area(g))) < min_sliver) next
+    }
+    keep[idx] <- TRUE
+    geoms[idx] <- g
+    acc <- if (is.null(acc)) g else suppressWarnings(sf::st_union(acc, g))
+  }
+
+  out <- proj
+  sf::st_geometry(out) <- geoms
+  out <- out[keep, ]
+  if ("area_m2" %in% names(out)) {
+    out$area_m2 <- as.numeric(sf::st_area(out))
+  }
+  sf::st_transform(out, sf::st_crs(sf_obj))
+}

@@ -595,7 +595,11 @@ sam_is_loaded <- function() {
   }
 
   combined_sf <- do.call(rbind, all_polygons)
+  combined_sf <- .suppress_overlaps(combined_sf)
   combined_sf <- .deduplicate_tile_boundaries(combined_sf, seams = seams)
+  if (nrow(combined_sf) > 1) {
+    combined_sf <- .trim_overlaps(combined_sf)
+  }
 
   n_total <- nrow(combined_sf)
   cli::cli_alert_success("Detected {n_total} object{?s} across {n_tiles} chunks.")
@@ -845,10 +849,15 @@ sam_is_loaded <- function() {
 
   combined_sf <- do.call(rbind, all_polygons)
 
+  combined_sf <- .suppress_overlaps(combined_sf)
+
   # Merge polygons that touch at tile boundaries
   n_before <- nrow(combined_sf)
   combined_sf <- .deduplicate_tile_boundaries(combined_sf, seams = seams)
   n_after <- nrow(combined_sf)
+  if (n_after > 1) {
+    combined_sf <- .trim_overlaps(combined_sf)
+  }
 
   if (n_before > n_after) {
     cli::cli_alert_info("Merged {n_before - n_after} boundary polygons.")
@@ -876,6 +885,77 @@ sam_is_loaded <- function() {
   result$sf_result <- combined_sf
   result$seams <- seams
   result
+}
+
+
+#' Suppress overlapping duplicate detections
+#'
+#' SAM3 can emit multiple overlapping masks for the same object (nested
+#' partial masks, offset duplicates). This performs score-ranked
+#' non-maximum suppression on polygons: detections are visited in
+#' descending score order, and a detection is dropped when it overlaps an
+#' already-kept detection beyond the IoU threshold, or when most of its own
+#' area is contained within one (the containment test catches nested
+#' partial masks that IoU alone misses).
+#'
+#' Thresholds are chosen so that genuine fragments of one object split at a
+#' chunk seam survive: fragments share only the chunk-overlap band, giving
+#' low IoU and low containment, and are healed afterwards by seam-aware
+#' merging.
+#'
+#' @param sf_obj An sf object with `score` polygons.
+#' @param iou Intersection-over-union threshold above which the
+#'   lower-scored polygon is suppressed.
+#' @param containment Intersection-over-own-area threshold above which the
+#'   lower-scored polygon is suppressed.
+#' @return The sf object with suppressed rows removed.
+#' @noRd
+.suppress_overlaps <- function(sf_obj, iou = 0.5, containment = 0.8) {
+  n <- nrow(sf_obj)
+  if (n <= 1) {
+    return(sf_obj)
+  }
+
+  merc <- "+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs"
+  geoms <- sf::st_geometry(sf::st_transform(sf_obj, merc))
+  areas <- as.numeric(sf::st_area(geoms))
+  scores <- if ("score" %in% names(sf_obj)) sf_obj$score else rep(1, n)
+
+  neighbors <- sf::st_intersects(geoms)
+  keep <- logical(n)
+
+  for (idx in order(scores, decreasing = TRUE)) {
+    nbrs <- neighbors[[idx]]
+    nbrs <- nbrs[nbrs != idx & keep[nbrs]]
+    ok <- TRUE
+    for (k in nbrs) {
+      inter <- suppressWarnings(sf::st_intersection(geoms[idx], geoms[k]))
+      inter_area <- if (length(inter) > 0) {
+        sum(as.numeric(sf::st_area(inter)))
+      } else {
+        0
+      }
+      if (inter_area <= 0) next
+      union_area <- areas[idx] + areas[k] - inter_area
+      if (
+        inter_area / union_area > iou ||
+          inter_area / areas[idx] > containment
+      ) {
+        ok <- FALSE
+        break
+      }
+    }
+    keep[idx] <- ok
+  }
+
+  n_dropped <- sum(!keep)
+  if (n_dropped > 0) {
+    cli::cli_alert_info(
+      "Suppressed {n_dropped} overlapping duplicate detection{?s}."
+    )
+  }
+
+  sf_obj[keep, ]
 }
 
 

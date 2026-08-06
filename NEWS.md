@@ -1,5 +1,24 @@
 # geosam 0.1.2 (development)
 
+## Chunked detection quality
+
+* Chunked detection now suppresses overlapping duplicate masks via
+  score-ranked non-maximum suppression (IoU + containment tests) before
+  boundary healing, then trims any residual partial overlaps so output
+  polygons never overlap. SAM3 frequently emits nested partial masks and
+  offset duplicates for the same object; these previously either stacked
+  on top of each other or were welded into blobs by boundary merging. The
+  new exported `sam_dedupe()` applies the same suppression (and optional
+  trimming) to any result, e.g. unchunked detections.
+* Boundary healing after chunked detection is now seam-aware: polygons are
+  only merged when they straddle a chunk-core boundary and look like
+  fragments of a single split object. Previously any detections within 1m
+  of each other were unioned, which welded together distinct adjacent
+  objects (e.g. truck trailers parked side by side). `sam_merge_edges()`
+  gains a `seam_aware` argument (default `TRUE`) and uses seam lines
+  stored on chunked results; `seam_aware = FALSE` restores proximity-only
+  merging.
+
 ## Interactive performance
 
 * `sam_explore()` gains a **Detection Quality** control (Fast / Balanced /
