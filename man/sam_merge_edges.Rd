@@ -4,7 +4,7 @@
 \alias{sam_merge_edges}
 \title{Merge Polygons Split at Tile Boundaries}
 \usage{
-sam_merge_edges(x, buffer = 2, by_prompt = TRUE)
+sam_merge_edges(x, buffer = 2, by_prompt = TRUE, seam_aware = TRUE)
 }
 \arguments{
 \item{x}{A geosam object or sf object with detection results.}
@@ -14,6 +14,14 @@ overlap. Larger values merge polygons that are further apart. Default is 2.}
 
 \item{by_prompt}{If TRUE and a \code{prompt} column exists, only merge polygons
 with the same prompt value. Default is TRUE.}
+
+\item{seam_aware}{If TRUE (default) and \code{x} is a geosam object from
+chunked detection, only merge polygons that straddle a chunk seam.
+This prevents welding together distinct objects that happen to sit
+close together (e.g. truck trailers parked side by side) while still
+healing objects genuinely split at tile boundaries. Set to FALSE to
+merge purely by proximity (legacy behavior). Ignored when seam
+geometry is unavailable (plain sf input or unchunked detection).}
 }
 \value{
 An sf object with merged polygons. Scores are aggregated by taking
@@ -30,8 +38,8 @@ intervals (tile boundaries). The default buffer of 2 meters catches most
 boundary splits without merging truly separate objects.
 
 For aggressive merging of nearby objects (not just boundary splits), use
-a larger buffer value, but be aware this may merge objects that should
-remain separate.
+a larger buffer value with \code{seam_aware = FALSE}, but be aware this may
+merge objects that should remain separate.
 }
 \examples{
 \dontrun{

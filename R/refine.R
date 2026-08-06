@@ -330,6 +330,13 @@ sam_find_similar <- function(x) {
 #'   overlap. Larger values merge polygons that are further apart. Default is 2.
 #' @param by_prompt If TRUE and a `prompt` column exists, only merge polygons
 #'   with the same prompt value. Default is TRUE.
+#' @param seam_aware If TRUE (default) and `x` is a geosam object from
+#'   chunked detection, only merge polygons that straddle a chunk seam.
+#'   This prevents welding together distinct objects that happen to sit
+#'   close together (e.g. truck trailers parked side by side) while still
+#'   healing objects genuinely split at tile boundaries. Set to FALSE to
+#'   merge purely by proximity (legacy behavior). Ignored when seam
+#'   geometry is unavailable (plain sf input or unchunked detection).
 #'
 #' @return An sf object with merged polygons. Scores are aggregated by taking
 #'   the maximum score from merged polygons.
@@ -340,8 +347,8 @@ sam_find_similar <- function(x) {
 #' boundary splits without merging truly separate objects.
 #'
 #' For aggressive merging of nearby objects (not just boundary splits), use
-#' a larger buffer value, but be aware this may merge objects that should
-#' remain separate.
+#' a larger buffer value with `seam_aware = FALSE`, but be aware this may
+#' merge objects that should remain separate.
 #'
 #' @export
 #'
@@ -360,14 +367,19 @@ sam_find_similar <- function(x) {
 #' # More aggressive merging (5m buffer)
 #' merged <- sam_merge_edges(buildings, buffer = 5)
 #' }
-sam_merge_edges <- function(x, buffer = 2, by_prompt = TRUE) {
+sam_merge_edges <- function(x, buffer = 2, by_prompt = TRUE, seam_aware = TRUE) {
   # Handle both geosam objects and sf objects
+
+  seams <- NULL
 
   if (inherits(x, "geosam")) {
     if (!is.null(x$sf_result)) {
       sf_obj <- x$sf_result
     } else {
       sf_obj <- sam_as_sf(x)
+    }
+    if (isTRUE(seam_aware)) {
+      seams <- x$seams
     }
   } else if (inherits(x, "sf")) {
     sf_obj <- x
@@ -387,7 +399,7 @@ sam_merge_edges <- function(x, buffer = 2, by_prompt = TRUE) {
     prompts <- unique(sf_obj$prompt)
     result_list <- lapply(prompts, function(p) {
       subset_sf <- sf_obj[sf_obj$prompt == p, ]
-      merged <- .merge_nearby_polygons(subset_sf, buffer)
+      merged <- .merge_nearby_polygons(subset_sf, buffer, seams = seams)
       if (nrow(merged) > 0) {
         merged$prompt <- p
         # Preserve prompt_color if it exists
@@ -399,7 +411,7 @@ sam_merge_edges <- function(x, buffer = 2, by_prompt = TRUE) {
     })
     result <- do.call(rbind, result_list)
   } else {
-    result <- .merge_nearby_polygons(sf_obj, buffer)
+    result <- .merge_nearby_polygons(sf_obj, buffer, seams = seams)
   }
 
   # Re-order by score
@@ -422,15 +434,18 @@ sam_merge_edges <- function(x, buffer = 2, by_prompt = TRUE) {
 #'
 #' @param sf_obj An sf object
 #' @param buffer Buffer distance in meters
+#' @param seams Optional sfc of seam LINESTRINGs (WGS84). When provided,
+#'   only polygons straddling a seam are merged.
 #' @return An sf object with merged polygons
 #' @noRd
-.merge_nearby_polygons <- function(sf_obj, buffer) {
+.merge_nearby_polygons <- function(sf_obj, buffer, seams = NULL) {
   if (nrow(sf_obj) <= 1) {
     return(sf_obj)
   }
 
   # Transform to projected CRS for accurate distance calculations
-  sf_proj <- sf::st_transform(sf_obj, "+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs")
+  merc <- "+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs"
+  sf_proj <- sf::st_transform(sf_obj, merc)
 
   # Buffer polygons to find nearby ones
 
@@ -439,6 +454,14 @@ sam_merge_edges <- function(x, buffer = 2, by_prompt = TRUE) {
   # Find which polygons intersect after buffering
 
   intersects_mat <- sf::st_intersects(buffered, sparse = FALSE)
+
+  # Restrict merging to seam-straddling pairs when seam geometry is known
+  if (!is.null(seams) && length(seams) > 0) {
+    seams_proj <- sf::st_transform(seams, merc)
+    intersects_mat <- .seam_filter_adjacency(
+      intersects_mat, sf_proj, buffered, seams_proj
+    )
+  }
 
   # Build groups of connected polygons using BFS
 

@@ -458,6 +458,18 @@ sam_is_loaded <- function() {
   chunk_width <- ceiling(img_width / tiles_x)
   chunk_height <- ceiling(img_height / tiles_y)
 
+  # Seam lines between chunk cores, for seam-aware boundary healing
+  seams <- .chunk_seam_lines(
+    full_ext = terra::ext(img_rast),
+    xres = terra::xres(img_rast),
+    yres = terra::yres(img_rast),
+    chunk_width = chunk_width,
+    chunk_height = chunk_height,
+    tiles_x = tiles_x,
+    tiles_y = tiles_y,
+    crs = terra::crs(img_rast)
+  )
+
   # Process each chunk with progress bar
   all_polygons <- list()
   tile_num <- 0
@@ -583,7 +595,7 @@ sam_is_loaded <- function() {
   }
 
   combined_sf <- do.call(rbind, all_polygons)
-  combined_sf <- .deduplicate_tile_boundaries(combined_sf)
+  combined_sf <- .deduplicate_tile_boundaries(combined_sf, seams = seams)
 
   n_total <- nrow(combined_sf)
   cli::cli_alert_success("Detected {n_total} object{?s} across {n_tiles} chunks.")
@@ -607,6 +619,7 @@ sam_is_loaded <- function() {
   )
 
   result$sf_result <- combined_sf
+  result$seams <- seams
   result
 }
 
@@ -692,6 +705,18 @@ sam_is_loaded <- function() {
   # Calculate chunk boundaries in pixels (core area without overlap)
   chunk_width <- ceiling(img_width / tiles_x)
   chunk_height <- ceiling(img_height / tiles_y)
+
+  # Seam lines between chunk cores, for seam-aware boundary healing
+  seams <- .chunk_seam_lines(
+    full_ext = full_ext,
+    xres = xres,
+    yres = yres,
+    chunk_width = chunk_width,
+    chunk_height = chunk_height,
+    tiles_x = tiles_x,
+    tiles_y = tiles_y,
+    crs = img_crs
+  )
 
   # Process each chunk with progress bar
   all_polygons <- list()
@@ -822,7 +847,7 @@ sam_is_loaded <- function() {
 
   # Merge polygons that touch at tile boundaries
   n_before <- nrow(combined_sf)
-  combined_sf <- .deduplicate_tile_boundaries(combined_sf)
+  combined_sf <- .deduplicate_tile_boundaries(combined_sf, seams = seams)
   n_after <- nrow(combined_sf)
 
   if (n_before > n_after) {
@@ -849,7 +874,120 @@ sam_is_loaded <- function() {
   )
 
   result$sf_result <- combined_sf
+  result$seams <- seams
   result
+}
+
+
+#' Build seam lines between chunk cores
+#'
+#' Internal seams are the boundaries between adjacent chunk core areas.
+#' Polygons split by chunked detection can only be split at these lines, so
+#' boundary healing should only merge polygons that straddle one of them.
+#'
+#' @param full_ext Image extent (terra ext or numeric xmin/xmax/ymin/ymax).
+#' @param xres,yres Raster resolution.
+#' @param chunk_width,chunk_height Core chunk size in pixels.
+#' @param tiles_x,tiles_y Grid dimensions.
+#' @param crs CRS of the image.
+#' @return An sfc of LINESTRINGs in WGS84, or NULL if there are no internal
+#'   seams.
+#' @noRd
+.chunk_seam_lines <- function(full_ext, xres, yres, chunk_width, chunk_height,
+                              tiles_x, tiles_y, crs) {
+  if (tiles_x < 2 && tiles_y < 2) {
+    return(NULL)
+  }
+
+  xmin <- as.numeric(full_ext[1])
+  xmax <- as.numeric(full_ext[2])
+  ymin <- as.numeric(full_ext[3])
+  ymax <- as.numeric(full_ext[4])
+
+  lines <- list()
+
+  if (tiles_x >= 2) {
+    for (i in seq_len(tiles_x - 1)) {
+      x <- xmin + i * chunk_width * xres
+      lines[[length(lines) + 1]] <- sf::st_linestring(
+        matrix(c(x, ymin, x, ymax), ncol = 2, byrow = TRUE)
+      )
+    }
+  }
+
+  if (tiles_y >= 2) {
+    for (j in seq_len(tiles_y - 1)) {
+      y <- ymax - j * chunk_height * yres
+      lines[[length(lines) + 1]] <- sf::st_linestring(
+        matrix(c(xmin, y, xmax, y), ncol = 2, byrow = TRUE)
+      )
+    }
+  }
+
+  seams <- sf::st_sfc(lines, crs = sf::st_crs(crs))
+  sf::st_transform(seams, "+proj=longlat +datum=WGS84 +no_defs")
+}
+
+
+#' Filter a buffered-adjacency matrix to seam-straddling pairs
+#'
+#' An edge between two polygons survives only if both touch a common seam
+#' line and they look like fragments of one object split at that seam:
+#' either their raw geometries overlap with positive area (chunk overlap
+#' guarantees this for true splits), or their centroids fall on opposite
+#' sides of the seam. Neighboring-but-distinct objects (e.g. trailers parked
+#' side by side) fail these tests and are left unmerged.
+#'
+#' @param intersects_mat Dense logical adjacency from buffered geometries.
+#' @param sf_proj Projected sf object (same order as the matrix).
+#' @param buffered Buffered projected geometries.
+#' @param seams_proj Seam LINESTRINGs in the same projected CRS.
+#' @return A filtered logical adjacency matrix.
+#' @noRd
+.seam_filter_adjacency <- function(intersects_mat, sf_proj, buffered,
+                                   seams_proj) {
+  n <- nrow(intersects_mat)
+  out <- matrix(FALSE, n, n)
+  diag(out) <- TRUE
+
+  seam_hits <- sf::st_intersects(buffered, seams_proj)
+  geoms <- sf::st_geometry(sf_proj)
+  cents <- suppressWarnings(sf::st_coordinates(sf::st_centroid(geoms)))
+
+  for (i in seq_len(max(n - 1, 0))) {
+    if (length(seam_hits[[i]]) == 0) next
+    for (j in seq((i + 1), n)) {
+      if (!intersects_mat[i, j]) next
+      common <- intersect(seam_hits[[i]], seam_hits[[j]])
+      if (length(common) == 0) next
+
+      # Fragments of one object overlap each other in the chunk-overlap band
+      inter <- suppressWarnings(sf::st_intersection(geoms[i], geoms[j]))
+      overlapping <- length(inter) > 0 &&
+        sum(as.numeric(sf::st_area(inter))) > 0
+
+      if (!overlapping) {
+        # Fallback: centroids on opposite sides of a shared seam
+        seg_len <- sqrt(sum((cents[i, 1:2] - cents[j, 1:2])^2))
+        if (seg_len > 0) {
+          seg <- sf::st_sfc(
+            sf::st_linestring(rbind(cents[i, 1:2], cents[j, 1:2])),
+            crs = sf::st_crs(sf_proj)
+          )
+          overlapping <- any(lengths(
+            sf::st_intersects(seams_proj[common], seg)
+          ) > 0)
+        }
+      }
+
+      if (overlapping) {
+        out[i, j] <- TRUE
+        out[j, i] <- TRUE
+      }
+    }
+  }
+
+  out
 }
 
 
@@ -858,9 +996,14 @@ sam_is_loaded <- function() {
 #' Identifies and merges polygons that touch or overlap at tile boundaries.
 #'
 #' @param sf_obj An sf object with polygons
+#' @param seams Optional sfc of seam LINESTRINGs (WGS84) marking chunk-core
+#'   boundaries. When provided, only polygons that straddle a seam are
+#'   merged; nearby-but-distinct objects (trailers, cars, pools) are left
+#'   alone. When NULL, all polygons within the buffer distance are merged
+#'   (legacy behavior).
 #' @return An sf object with deduplicated polygons
 #' @noRd
-.deduplicate_tile_boundaries <- function(sf_obj) {
+.deduplicate_tile_boundaries <- function(sf_obj, seams = NULL) {
   if (nrow(sf_obj) <= 1) {
     return(sf_obj)
   }
@@ -868,13 +1011,22 @@ sam_is_loaded <- function() {
 
   # Transform to a projected CRS for accurate distance calculations
   # Use PROJ4 string to avoid PROJ database lookup issues (EPSG:3857)
-  sf_proj <- sf::st_transform(sf_obj, "+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs")
+  merc <- "+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs"
+  sf_proj <- sf::st_transform(sf_obj, merc)
 
   # Find polygons that touch or nearly touch (within 1m buffer)
   buffered <- sf::st_buffer(sf_proj, 1)
 
   # Find which polygons intersect after buffering
   intersects_mat <- sf::st_intersects(buffered, sparse = FALSE)
+
+  # Restrict merging to seam-straddling pairs when seam geometry is known
+  if (!is.null(seams) && length(seams) > 0) {
+    seams_proj <- sf::st_transform(seams, merc)
+    intersects_mat <- .seam_filter_adjacency(
+      intersects_mat, sf_proj, buffered, seams_proj
+    )
+  }
 
   # Build groups of connected polygons
   n <- nrow(sf_obj)
