@@ -275,47 +275,57 @@ get_imagery <- function(
     }
   }
 
-  # Stack rows vertically
-  merged_img <- magick::image_append(do.call(c, tile_rows), stack = TRUE)
-
-  # Flip image vertically - terra expects rows from south to north,
-  # but web tiles are arranged north to south
-  merged_img <- magick::image_flip(merged_img)
-
-  # Save as temp PNG
-  tmp_png <- tempfile(fileext = ".png")
-  magick::image_write(merged_img, tmp_png, format = "png")
-
-  # Read with terra (suppress extent warning for raw PNG)
-  r <- suppressWarnings(terra::rast(tmp_png))
-
-  # Calculate bounds in Web Mercator
+  # Mosaic bounds in Web Mercator. Tile row y_min is the northernmost row,
+  # so it maps to raster row 1.
   nw_lonlat <- .tile_to_lonlat(x_min, y_min, zoom)
   se_lonlat <- .tile_to_lonlat(x_max + 1, y_max + 1, zoom)
-
   nw_merc <- .lonlat_to_mercator(nw_lonlat[1], nw_lonlat[2])
   se_merc <- .lonlat_to_mercator(se_lonlat[1], se_lonlat[2])
 
-
-  # Set extent and CRS
-  # Use PROJ4 string directly to avoid PROJ database lookup issues (EPSG:3857)
-  # Suppress warnings from PROJ database lookups (benign - CRS is set correctly)
-  terra::ext(r) <- terra::ext(nw_merc[1], se_merc[1], se_merc[2], nw_merc[2])
+  # Build the GeoTIFF one tile row at a time with terra's block writer.
+  # This avoids two earlier pitfalls: (1) round-tripping the mosaic through an
+  # ungeoreferenced PNG, where terra/GDAL versions disagree on whether rows
+  # are flipped on read (which mirrored every detection north/south on some
+  # installs); and (2) materialising the whole mosaic as a numeric array,
+  # which multiplied peak memory for large requests. magick::image_data()
+  # returns (channels, width, height) with the first pixel top-left, so a
+  # (width, height, channels) permutation flattens to the row-major,
+  # layer-stacked order writeValues() expects.
+  # Use a PROJ4 string directly to avoid PROJ database lookups (EPSG:3857).
+  r <- terra::rast(
+    nrows = n_rows * tile_size,
+    ncols = n_cols * tile_size,
+    nlyrs = 3L,
+    extent = terra::ext(nw_merc[1], se_merc[1], se_merc[2], nw_merc[2])
+  )
   suppressWarnings({
     terra::crs(r) <- "+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs"
+    terra::writeStart(r, output, overwrite = TRUE, datatype = "INT1U")  # mutates r in place
   })
 
-  # Write GeoTIFF
-  suppressWarnings({
-    terra::writeRaster(r, output, overwrite = TRUE, datatype = "INT1U")
-  })
+  for (i in seq_along(tile_rows)) {
+    raw_data <- magick::image_data(tile_rows[[i]], channels = "rgb")
+    row_px <- dim(raw_data)[3]
+    if (dim(raw_data)[2] != n_cols * tile_size || row_px != tile_size) {
+      terra::writeStop(r)
+      cli::cli_abort(
+        "Unexpected tile row dimensions: {dim(raw_data)[2]}x{row_px} (expected {n_cols * tile_size}x{tile_size})."
+      )
+    }
+    terra::writeValues(
+      r,
+      as.integer(aperm(raw_data, c(2, 3, 1))),
+      start = (i - 1L) * tile_size + 1L,
+      nrows = row_px
+    )
+    tile_rows[i] <- list(NULL)  # release the strip without shifting indices
+  }
+
+  r <- terra::writeStop(r)
 
   if (missing_tiles > 0) {
     cli::cli_alert_warning("Filled {missing_tiles} missing imagery tile{?s} with blank pixels.")
   }
-
-  # Clean up
-  unlink(tmp_png)
 
   output
 }

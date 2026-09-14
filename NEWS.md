@@ -1,5 +1,17 @@
 # geosam 0.1.2 (development)
 
+## Bug fixes
+
+* Fetched imagery mosaics could be vertically mirrored on some installs,
+  causing every detection from `sam_detect()` and `sam_explore()` to land
+  in the wrong place (flipped north/south within the fetched extent). The
+  tile stitcher previously flipped the mosaic and round-tripped it through
+  an ungeoreferenced PNG, relying on terra/GDAL flipping the rows back on
+  read; recent terra/GDAL builds no longer do so. The GeoTIFF is now
+  written directly from the stitched pixel data, one tile row at a time via
+  terra's block writer, which is independent of file-reader behaviour and
+  keeps peak memory well below that of materialising the full mosaic.
+
 ## Chunked detection quality
 
 * Chunked detection now suppresses overlapping duplicate masks via
